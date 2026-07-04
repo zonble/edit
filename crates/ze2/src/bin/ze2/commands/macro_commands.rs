@@ -6,7 +6,8 @@ use ze2::tui::Context;
 use super::parse::{command_sequence_from_text, macro_name_and_body};
 use super::shortcuts::parse_key_name;
 use super::{
-    Command, CommandArgs, CommandDefinition, CommandFocusTarget, execute_command_sequence,
+    Command, CommandArgs, CommandDefinition, CommandFocusTarget, CommandInvocation,
+    execute_command_sequence,
 };
 use crate::state::*;
 
@@ -45,6 +46,16 @@ pub(crate) const COMMANDS: &[CommandDefinition] = &[
         default_focus_target: CommandFocusTarget::Default,
         handler: bind_key,
         argument_hint: Some("<key> = [cmd]..."),
+    },
+    CommandDefinition {
+        command: Command::ExecuteRegion,
+        names: &["execute", "run-region"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: execute_region,
+        argument_hint: None,
     },
 ];
 
@@ -103,11 +114,6 @@ fn bind_key(_ctx: &mut Context, state: &mut State, args: CommandArgs) {
 }
 
 fn run_macro(ctx: &mut Context, state: &mut State, args: CommandArgs) {
-    // A fresh top-level invocation starts with no pending abort.
-    if state.macro_depth == 0 {
-        state.macro_abort = false;
-    }
-
     let Some(name) = args.argument.as_deref().map(str::trim).filter(|s| !s.is_empty()) else {
         return report_error(state, "usage: macro <name>");
     };
@@ -118,13 +124,47 @@ fn run_macro(ctx: &mut Context, state: &mut State, args: CommandArgs) {
         return report_error(state, &format!("unknown macro '{name}'"));
     };
 
+    run_capped_sequence(ctx, state, sequence);
+}
+
+// `execute` runs the current selection (or the current line) as a command
+// sequence -- PE's `[execute]`, a macro scratchpad in the buffer itself.
+fn execute_region(ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    let bytes = {
+        let Some(doc) = state.documents.active() else {
+            return report_error(state, "no active document");
+        };
+        let mut buffer = doc.buffer.borrow_mut();
+        buffer.extract_user_selection(false).unwrap_or_else(|| buffer.current_line_text())
+    };
+
+    let Ok(text) = String::from_utf8(bytes) else {
+        return report_error(state, "region is not valid UTF-8");
+    };
+    let Some(sequence) = command_sequence_from_text(
+        text.trim(),
+        state.command_bar_include_vim_commands,
+        state.command_bar_include_emacs_commands,
+    ) else {
+        return report_error(state, "region is not a command sequence: [cmd] [cmd]...");
+    };
+
+    run_capped_sequence(ctx, state, sequence);
+}
+
+// Run a sequence under the recursion cap, so a macro or `[execute]` that calls
+// itself stops instead of overflowing the stack. Resets the abort flag on a
+// fresh top-level run, and relies on execute_command_sequence to stop the rest
+// of the sequence once a step aborts.
+fn run_capped_sequence(ctx: &mut Context, state: &mut State, sequence: Vec<CommandInvocation>) {
+    if state.macro_depth == 0 {
+        state.macro_abort = false;
+    }
     if state.macro_depth >= MAX_MACRO_DEPTH {
         return report_error(state, "macro recursion too deep");
     }
 
     state.macro_depth += 1;
-    // execute_command_sequence stops at the first step that sets macro_abort,
-    // so a tripped depth cap does not run the remaining steps once per frame.
     execute_command_sequence(ctx, state, sequence);
     state.macro_depth -= 1;
 }

@@ -1,4 +1,4 @@
-# ze2.pro -- sample macro profile, in the PE2/PE3/POE ".pro" style.
+# ze2.pro -- sample macro profile, in the PE2/PE3 ".pro" style.
 #
 # A profile is just a list of commands, one per line, the same commands you can
 # type in the command bar (Esc). Comment lines start with '#'. A macro is a
@@ -69,3 +69,7 @@ bind c-s-p = [macro prose]
 
 # A binding can also be an inline sequence with no named macro.
 bind a-j   = [join-line]
+
+# Bind `execute` to Ctrl-Space: run the current selection (or the current line)
+# as a command sequence, turning the buffer into a macro scratchpad.
+bind c-space = [execute]
