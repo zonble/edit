@@ -10,6 +10,7 @@ mod definition;
 mod editing_commands;
 mod file_commands;
 mod file_format_commands;
+mod macro_commands;
 mod navigation_commands;
 mod parse;
 mod search_commands;
@@ -21,7 +22,10 @@ mod view_commands;
 pub use definition::{
     Command, CommandArgs, CommandBarShortcut, CommandFocusTarget, CommandInvocation,
 };
-pub use parse::{autocomplete_command_suggestions_with_modes, command_from_text_with_modes};
+pub use parse::{
+    autocomplete_command_suggestions_with_modes, command_from_text_with_modes,
+    command_sequence_from_text,
+};
 pub use shortcuts::{
     command_invocation_from_shortcut, commandbar_shortcut_from_key,
     should_handle_command_shortcut_before_editor,
@@ -38,6 +42,7 @@ const COMMAND_GROUPS: &[&[CommandDefinition]] = &[
     view_commands::COMMANDS,
     settings_commands::COMMANDS,
     utility_commands::COMMANDS,
+    macro_commands::COMMANDS,
 ];
 
 pub(crate) fn command_definitions() -> impl Iterator<Item = &'static CommandDefinition> {

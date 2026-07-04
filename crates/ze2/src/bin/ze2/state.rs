@@ -13,6 +13,7 @@ use ze2::tui::*;
 use ze2::{buffer, icu};
 
 use crate::apperr;
+use crate::commands::CommandInvocation;
 use crate::documents::DocumentManager;
 use crate::localization::*;
 use crate::settings::{BindingMode, EditorColor, EofStyle, Settings};
@@ -203,6 +204,16 @@ pub struct State {
     pub command_bar_include_vim_commands: bool,
     pub command_bar_include_emacs_commands: bool,
 
+    // Macros
+    // Named command sequences, invoked by name or `[macro <name>]`. In-memory
+    // only for now; a profile loader will persist them later.
+    pub macros: std::collections::HashMap<String, Vec<CommandInvocation>>,
+    // Current macro nesting depth, used to bound recursion.
+    pub macro_depth: usize,
+    // Set when a macro step fails; stops the enclosing sequence(s) unwinding
+    // instead of running their remaining steps.
+    pub macro_abort: bool,
+
     // Error Log
     // A ring buffer of the last 10 errors.
     pub error_log: [String; 10],
@@ -301,6 +312,11 @@ impl State {
             command_bar_autocomplete_index: None,
             command_bar_include_vim_commands: settings_command_bar_include_vim_commands,
             command_bar_include_emacs_commands: settings_command_bar_include_emacs_commands,
+
+            // Macros
+            macros: std::collections::HashMap::new(),
+            macro_depth: 0,
+            macro_abort: false,
 
             // Error Log
             error_log: [const { String::new() }; 10],

@@ -87,8 +87,11 @@ pub enum Command {
     TransformTraditionalChinese,
     CharCode,
     Help,
+    DefineMacro,
+    RunMacro,
 }
 
+#[derive(Clone)]
 pub struct CommandInvocation {
     pub command: Command,
     pub args: CommandArgs,
@@ -106,7 +109,7 @@ pub enum CommandFocusTarget {
     StatusBar,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct CommandArgs {
     pub argument: Option<String>,
     pub focus_target: CommandFocusTarget,

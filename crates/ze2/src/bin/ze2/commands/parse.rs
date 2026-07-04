@@ -199,6 +199,52 @@ pub fn command_from_text_with_modes(
     command_from_text_with_argument(text, include_vim_commands, include_emacs_commands)
 }
 
+/// Parse a bracketed command sequence like `[undo] [save] [find foo]` into the
+/// invocations it runs, in order. Returns `None` unless the whole string parses:
+/// a single bad token rejects the sequence before anything runs, which is the
+/// contract the macro runner relies on (parse failures never half-execute).
+///
+/// v1 limits: `split_once(']')` means a bracketed argument cannot contain `]`
+/// and there is no escaping.
+pub fn command_sequence_from_text(
+    input: &str,
+    include_vim_commands: bool,
+    include_emacs_commands: bool,
+) -> Option<Vec<CommandInvocation>> {
+    let mut rest = input.trim();
+    if !rest.starts_with('[') {
+        return None;
+    }
+
+    let mut invocations = Vec::new();
+    while !rest.is_empty() {
+        rest = rest.strip_prefix('[')?;
+        let (command, tail) = rest.split_once(']')?;
+        invocations.push(command_from_text_with_modes(
+            command.trim(),
+            include_vim_commands,
+            include_emacs_commands,
+        )?);
+        rest = tail.trim_start();
+    }
+
+    Some(invocations)
+}
+
+/// Split a `define` argument (`name = [cmd] [cmd]...`) into its name and body.
+/// The name must be a single word; the body is returned trimmed and may be empty
+/// (an empty body means "remove this macro", PE-style unbind).
+pub(crate) fn macro_name_and_body(arg: &str) -> Option<(&str, &str)> {
+    let (name, body) = arg.split_once('=')?;
+    let name = name.trim();
+    // A name must be a single bare word: no whitespace, and no bracket that
+    // would clash with the `[cmd]` sequence syntax when typed bare.
+    if name.is_empty() || name.contains(|ch: char| ch.is_whitespace() || matches!(ch, '[' | ']')) {
+        return None;
+    }
+    Some((name, body.trim()))
+}
+
 fn command_from_shorthand(text: &str) -> Option<CommandInvocation> {
     let text = text.trim();
     if text.is_empty() {
@@ -309,6 +355,31 @@ pub(crate) fn normalize_command_name(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn command_sequence_parses_all_or_nothing() {
+        let seq = command_sequence_from_text("[undo] [save]", true, true).unwrap();
+        assert!(seq.len() == 2);
+        assert!(matches!(seq[0].command, Command::Undo));
+        assert!(matches!(seq[1].command, Command::Save));
+
+        // A single unknown token rejects the whole sequence.
+        assert!(command_sequence_from_text("[undo] [not-a-command]", true, true).is_none());
+        // Not a bracket sequence at all.
+        assert!(command_sequence_from_text("undo", true, true).is_none());
+    }
+
+    #[test]
+    fn macro_definition_splits_name_and_body() {
+        assert_eq!(macro_name_and_body("greet = [insert hi]"), Some(("greet", "[insert hi]")));
+        // Empty body is the unbind form.
+        assert_eq!(macro_name_and_body("greet ="), Some(("greet", "")));
+        // Multi-word names, bracket names, and missing '=' are rejected.
+        assert_eq!(macro_name_and_body("two words = [undo]"), None);
+        assert_eq!(macro_name_and_body("[weird] = [undo]"), None);
+        assert_eq!(macro_name_and_body("nobody"), None);
+        assert_eq!(macro_name_and_body("= [undo]"), None);
+    }
 
     #[test]
     fn command_text_accepts_common_aliases() {
