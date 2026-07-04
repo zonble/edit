@@ -39,6 +39,10 @@ define sig = [insert -- ] [insert-line] [insert Jim Huang]
 # Drop a date stamp on a fresh line.
 define stamp = [insert-line] [insert Date: ] [date]
 
+# A step may lead with a repeat count: `[N cmd]` runs cmd N times. Here: open
+# five blank lines below.
+define gap = [5 insert-line]
+
 # --- formatting / composition ----------------------------------------------
 
 # Reflow the paragraph, then save. A plain two-step macro.

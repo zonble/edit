@@ -200,9 +200,11 @@ pub fn command_from_text_with_modes(
 }
 
 /// Parse a bracketed command sequence like `[undo] [save] [find foo]` into the
-/// invocations it runs, in order. Returns `None` unless the whole string parses:
-/// a single bad token rejects the sequence before anything runs, which is the
-/// contract the macro runner relies on (parse failures never half-execute).
+/// invocations it runs, in order. A step may lead with a repeat count, so
+/// `[3 undo]` expands to three `undo` steps. Returns `None` unless the whole
+/// string parses: a single bad token rejects the sequence before anything runs,
+/// which is the contract the macro runner relies on (parse failures never
+/// half-execute).
 ///
 /// v1 limits: `split_once(']')` means a bracketed argument cannot contain `]`
 /// and there is no escaping.
@@ -219,16 +221,39 @@ pub fn command_sequence_from_text(
     let mut invocations = Vec::new();
     while !rest.is_empty() {
         rest = rest.strip_prefix('[')?;
-        let (command, tail) = rest.split_once(']')?;
-        invocations.push(command_from_text_with_modes(
-            command.trim(),
-            include_vim_commands,
-            include_emacs_commands,
-        )?);
+        let (token, tail) = rest.split_once(']')?;
+        let (count, command) = split_repeat_count(token.trim())?;
+        let invocation =
+            command_from_text_with_modes(command, include_vim_commands, include_emacs_commands)?;
+        // Expanding N copies keeps repeat orthogonal to each command's own
+        // argument and lets abort-on-failure stop the rest for free.
+        for _ in 0..count {
+            invocations.push(invocation.clone());
+        }
         rest = tail.trim_start();
     }
 
     Some(invocations)
+}
+
+/// A bracketed step may lead with a repeat count: `[3 undo]` runs `undo` three
+/// times. Returns the count (default 1) and the remaining command text. A bare
+/// number like `[42]` is left alone so it stays the Goto shorthand. A count
+/// over the cap returns `None` to reject the whole sequence, rather than
+/// silently truncating (which could half-run a destructive step).
+fn split_repeat_count(text: &str) -> Option<(usize, &str)> {
+    const MAX_REPEAT: usize = 1000;
+
+    // Only a pure-integer head in front of an actual command is a repeat count;
+    // anything else (a bare number, `[find foo]`, `[3d x]`) is left untouched.
+    let Some((head, rest)) = text.split_once(char::is_whitespace) else {
+        return Some((1, text));
+    };
+    let rest = rest.trim_start();
+    match head.parse::<usize>() {
+        Ok(count) if !rest.is_empty() => (count <= MAX_REPEAT).then_some((count, rest)),
+        _ => Some((1, text)),
+    }
 }
 
 /// Split a `define` argument (`name = [cmd] [cmd]...`) into its name and body.
@@ -367,6 +392,25 @@ mod tests {
         assert!(command_sequence_from_text("[undo] [not-a-command]", true, true).is_none());
         // Not a bracket sequence at all.
         assert!(command_sequence_from_text("undo", true, true).is_none());
+    }
+
+    #[test]
+    fn command_sequence_expands_repeat_counts() {
+        let seq = command_sequence_from_text("[3 undo]", true, true).unwrap();
+        assert!(seq.len() == 3);
+        assert!(seq.iter().all(|inv| matches!(inv.command, Command::Undo)));
+
+        // A leading count repeats the whole command, argument included.
+        let seq = command_sequence_from_text("[2 find foo]", true, true).unwrap();
+        assert!(seq.len() == 2);
+        assert!(seq.iter().all(|inv| matches!(inv.command, Command::Find)));
+
+        // A bare number stays the Goto shorthand, not a repeat.
+        let seq = command_sequence_from_text("[42]", true, true).unwrap();
+        assert!(seq.len() == 1 && matches!(seq[0].command, Command::Goto));
+
+        // An over-limit count rejects the whole sequence instead of truncating.
+        assert!(command_sequence_from_text("[5000 undo]", true, true).is_none());
     }
 
     #[test]
