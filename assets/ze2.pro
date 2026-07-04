@@ -60,10 +60,11 @@ define prose = [word-wrap true] [toggle-ruler]
 
 # --- key bindings -----------------------------------------------------------
 
-# Bind keys to the macros above (and to inline sequences). These override the
-# built-in shortcut for the same key.
+# Bind macros (and inline sequences) to keys. These examples use keys that are
+# free by default; a binding is checked before the built-in shortcut for the
+# same key, so it can also override a default (listed at the end of this file).
 bind c-d   = [macro dup-line]
-bind a-u   = [macro upper-line]
+bind a-e   = [macro upper-line]
 bind f9    = [macro tidy]
 bind c-s-p = [macro prose]
 
@@ -80,3 +81,28 @@ bind c-space = [execute]
 # captured (text via the "insert" command).
 bind f7 = [record]
 bind f8 = [replay]
+
+# --- default key bindings ---------------------------------------------------
+#
+# The bindings below mirror ze2's built-in shortcuts. They are already active
+# without this file; they are listed so a profile can start from the real
+# defaults and rebind or unbind any of them (unbind with an empty body, e.g.
+# "bind c-w ="). F2/F3/F4 prefill the command bar with save/file/quit and are
+# not command bindings, so they are not listed here.
+bind a-b   = [mark-block]
+bind a-l   = [mark-line]
+bind a-m   = [move-mark]
+bind a-c   = [copy-mark]
+bind a-f   = [fill-mark]
+bind a-u   = [unmark]
+bind c-n   = [new]
+bind c-o   = [open]
+bind c-s   = [save]
+bind c-s-s = [save-as]
+bind c-w   = [close]
+bind c-p   = [go-to-file]
+bind c-q   = [exit]
+bind c-g   = [goto]
+bind c-f   = [find]
+bind c-r   = [replace]
+bind c-l   = [select-line]

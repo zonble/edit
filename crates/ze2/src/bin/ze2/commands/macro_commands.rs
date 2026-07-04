@@ -363,7 +363,45 @@ fn report_error(state: &mut State, message: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::profile_command_lines;
+    use super::parse_key_name;
+    use super::{
+        command_from_text_with_modes, command_sequence_from_text, macro_name_and_body,
+        profile_command_lines,
+    };
+
+    // The shipped sample profile must stay runnable: every bind key must parse,
+    // and every define/bind body and bare command must resolve to real commands.
+    // This catches the profile drifting away from the current command table or
+    // key bindings.
+    #[test]
+    fn sample_profile_resolves() {
+        let profile = include_str!("../../../../../../assets/ze2.pro");
+        for (line_no, command) in profile_command_lines(profile) {
+            let define_or_bind = command
+                .strip_prefix("bind ")
+                .map(|rest| (true, rest))
+                .or_else(|| command.strip_prefix("define ").map(|rest| (false, rest)));
+
+            let Some((is_bind, rest)) = define_or_bind else {
+                assert!(
+                    command_sequence_from_text(&command, true, true).is_some()
+                        || command_from_text_with_modes(&command, true, true).is_some(),
+                    "line {line_no}: did not parse: {command}"
+                );
+                continue;
+            };
+
+            let (name, body) = macro_name_and_body(rest)
+                .unwrap_or_else(|| panic!("line {line_no}: bad name/body: {command}"));
+            if is_bind {
+                assert!(parse_key_name(name).is_some(), "line {line_no}: unknown key: {name}");
+            }
+            assert!(
+                body.is_empty() || command_sequence_from_text(body, true, true).is_some(),
+                "line {line_no}: body does not resolve: {body}"
+            );
+        }
+    }
 
     #[test]
     fn profile_lines_drop_comments_and_join_continuations() {
