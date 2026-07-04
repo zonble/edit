@@ -102,3 +102,19 @@ pub fn execute_command_invocation(
 
     ctx.needs_rerender();
 }
+
+/// Run a sequence of invocations in order, stopping early if a step aborts the
+/// enclosing macro (see `State::macro_abort`). Top-level callers clear
+/// `macro_abort` before calling so a prior failure does not leak in.
+pub fn execute_command_sequence(
+    ctx: &mut Context,
+    state: &mut State,
+    sequence: Vec<CommandInvocation>,
+) {
+    for invocation in sequence {
+        execute_command_invocation(ctx, state, invocation);
+        if state.macro_abort {
+            break;
+        }
+    }
+}

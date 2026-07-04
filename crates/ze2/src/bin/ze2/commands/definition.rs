@@ -89,6 +89,7 @@ pub enum Command {
     Help,
     DefineMacro,
     RunMacro,
+    BindKey,
 }
 
 #[derive(Clone)]

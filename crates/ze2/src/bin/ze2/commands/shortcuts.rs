@@ -45,6 +45,76 @@ pub fn command_invocation_from_shortcut(key: InputKey) -> Option<CommandInvocati
     .map(|command| CommandInvocation { command, args: CommandArgs::default() })
 }
 
+/// Parse a PE-style key name like `c-s`, `a-l`, `s-tab`, or `f2` into an
+/// `InputKey`. Modifier prefixes `c-`/`a-`/`s-` (Ctrl/Alt/Shift) are
+/// case-insensitive and may be combined; the base is a single letter or digit,
+/// a named key (`enter`, `tab`, `up`, `pgdn`, ...), or `f1`-`f12`. Base letters
+/// are case-insensitive, so Shift must be written explicitly as `s-`. Returns
+/// `None` for anything unrecognized.
+pub(crate) fn parse_key_name(name: &str) -> Option<InputKey> {
+    let mut rest = name.trim();
+    if rest.is_empty() {
+        return None;
+    }
+
+    let mut modifiers = kbmod::NONE;
+    while let Some((prefix, tail)) = rest.split_at_checked(2) {
+        let modifier = match prefix.to_ascii_lowercase().as_str() {
+            "c-" => kbmod::CTRL,
+            "a-" => kbmod::ALT,
+            "s-" => kbmod::SHIFT,
+            _ => break,
+        };
+        modifiers |= modifier;
+        rest = tail;
+    }
+
+    Some(modifiers | base_key(rest)?)
+}
+
+fn base_key(name: &str) -> Option<InputKey> {
+    let lower = name.to_ascii_lowercase();
+
+    // A single letter, digit, or space maps directly (from_ascii's domain).
+    let mut chars = lower.chars();
+    if let (Some(ch), None) = (chars.next(), chars.next())
+        && let Some(key) = InputKey::from_ascii(ch)
+    {
+        return Some(key);
+    }
+
+    Some(match lower.as_str() {
+        "f1" => vk::F1,
+        "f2" => vk::F2,
+        "f3" => vk::F3,
+        "f4" => vk::F4,
+        "f5" => vk::F5,
+        "f6" => vk::F6,
+        "f7" => vk::F7,
+        "f8" => vk::F8,
+        "f9" => vk::F9,
+        "f10" => vk::F10,
+        "f11" => vk::F11,
+        "f12" => vk::F12,
+        "enter" | "return" => vk::RETURN,
+        "esc" | "escape" => vk::ESCAPE,
+        "tab" => vk::TAB,
+        "space" => vk::SPACE,
+        "backspace" | "back" | "bksp" => vk::BACK,
+        "up" => vk::UP,
+        "down" => vk::DOWN,
+        "left" => vk::LEFT,
+        "right" => vk::RIGHT,
+        "home" => vk::HOME,
+        "end" => vk::END,
+        "pgup" | "pageup" | "prior" => vk::PRIOR,
+        "pgdn" | "pagedown" | "next" => vk::NEXT,
+        "ins" | "insert" => vk::INSERT,
+        "del" | "delete" => vk::DELETE,
+        _ => return None,
+    })
+}
+
 pub fn commandbar_shortcut_from_key(key: InputKey) -> Option<CommandBarShortcut> {
     Some(CommandBarShortcut {
         text: match key {
@@ -127,6 +197,23 @@ mod tests {
 
             assert!(text == expected);
         }
+    }
+
+    #[test]
+    fn key_names_parse_with_modifiers() {
+        assert!(parse_key_name("c-s") == Some(kbmod::CTRL | vk::S));
+        assert!(parse_key_name("a-l") == Some(kbmod::ALT | vk::L));
+        assert!(parse_key_name("s-tab") == Some(kbmod::SHIFT | vk::TAB));
+        // Modifiers combine and are case-insensitive.
+        assert!(parse_key_name("C-S-f2") == Some(kbmod::CTRL_SHIFT | vk::F2));
+        // Bare keys and named keys.
+        assert!(parse_key_name("a") == Some(vk::A));
+        assert!(parse_key_name("enter") == Some(vk::RETURN));
+        assert!(parse_key_name("f12") == Some(vk::F12));
+        // Junk is rejected.
+        assert!(parse_key_name("").is_none());
+        assert!(parse_key_name("c-").is_none());
+        assert!(parse_key_name("nope").is_none());
     }
 
     #[test]

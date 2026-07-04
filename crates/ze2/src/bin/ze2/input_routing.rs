@@ -6,7 +6,7 @@ use ze2::tui::Context;
 
 use crate::commands::{
     Command, CommandInvocation, command_invocation_from_shortcut, commandbar_shortcut_from_key,
-    should_handle_command_shortcut_before_editor,
+    execute_command_sequence, should_handle_command_shortcut_before_editor,
 };
 use crate::settings::BindingMode;
 use crate::state::{State, StateSearchKind};
@@ -15,12 +15,43 @@ pub fn handle_input_before_editor(
     ctx: &mut Context,
     state: &mut State,
 ) -> Option<CommandInvocation> {
+    // A user key binding is checked before the editor so it can override the
+    // editor's own handling of the key (and the built-in shortcuts below),
+    // matching how a PE profile redefines keys.
+    if run_key_binding_before_editor(ctx, state) {
+        ctx.set_input_consumed();
+        return None;
+    }
+
     if handle_commandbar_shortcut(ctx, state) {
         ctx.set_input_consumed();
         return None;
     }
 
     insert_text_invocation_before_editor(ctx, state)
+}
+
+fn run_key_binding_before_editor(ctx: &mut Context, state: &mut State) -> bool {
+    // Only in the editor: never intercept keys destined for the command bar,
+    // the search field, a dialog, or a pending clipboard sync.
+    if state.command_bar_active
+        || !matches!(state.wants_search.kind, StateSearchKind::Hidden | StateSearchKind::Disabled)
+        || state.wants_dialog()
+        || ctx.clipboard_ref().wants_host_sync()
+    {
+        return false;
+    }
+
+    let Some(key) = ctx.keyboard_input() else {
+        return false;
+    };
+    let Some(sequence) = state.key_bindings.get(&key).cloned() else {
+        return false;
+    };
+
+    state.macro_abort = false;
+    execute_command_sequence(ctx, state, sequence);
+    true
 }
 
 fn handle_commandbar_shortcut(ctx: &Context, state: &mut State) -> bool {

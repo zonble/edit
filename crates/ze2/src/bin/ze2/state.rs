@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use ze2::framebuffer::IndexedColor;
 use ze2::helpers::*;
+use ze2::input::InputKey;
 use ze2::oklab::StraightRgba;
 use ze2::tui::*;
 use ze2::{buffer, icu};
@@ -208,6 +209,9 @@ pub struct State {
     // Named command sequences, invoked by name or `[macro <name>]`. In-memory
     // only for now; a profile loader will persist them later.
     pub macros: std::collections::HashMap<String, Vec<CommandInvocation>>,
+    // Keys bound to command sequences via `bind <key> = [..]`. Consulted in the
+    // before-editor path, so a binding can override a built-in shortcut.
+    pub key_bindings: std::collections::HashMap<InputKey, Vec<CommandInvocation>>,
     // Current macro nesting depth, used to bound recursion.
     pub macro_depth: usize,
     // Set when a macro step fails; stops the enclosing sequence(s) unwinding
@@ -315,6 +319,7 @@ impl State {
 
             // Macros
             macros: std::collections::HashMap::new(),
+            key_bindings: std::collections::HashMap::new(),
             macro_depth: 0,
             macro_abort: false,
 

@@ -8,7 +8,7 @@ use ze2::tui::*;
 
 use crate::commands::{
     Command, CommandArgs, CommandInvocation, autocomplete_command_suggestions_with_modes,
-    command_from_text_with_modes, command_sequence_from_text, execute_command_invocation,
+    command_from_text_with_modes, command_sequence_from_text, execute_command_sequence,
 };
 use crate::localization::{LocId, loc};
 use crate::state::*;
@@ -272,9 +272,9 @@ fn submit_commandbar_input(ctx: &mut Context, state: &mut State) {
     state.command_bar_error.clear();
     state.command_bar_active = false;
     state.wants_editor_focus = true;
-    for invocation in invocations {
-        execute_command_invocation(ctx, state, invocation);
-    }
+    // Fresh top-level run: clear any abort left by a previous macro.
+    state.macro_abort = false;
+    execute_command_sequence(ctx, state, invocations);
 }
 
 #[cfg(test)]

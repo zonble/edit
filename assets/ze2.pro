@@ -7,10 +7,16 @@
 # <name>`. Built-in command names always win a collision, so a macro named
 # `save` is only reachable as `macro save`.
 #
-# STATUS: Milestone 1 ships named macros held in memory. Sourcing this file at
-# startup and binding keys (`def <key> = ...`) are later milestones. Until the
-# loader lands, paste these `define` lines into the command bar one at a time.
-# An empty body removes a macro (PE-style unbind): `define scratch =`.
+# Bind a key to a sequence with `bind <key> = [cmd] ...`. Key names use the PE
+# modifier prefixes c- (Ctrl), a- (Alt), s- (Shift), combinable and case-
+# insensitive, over a base key: a letter/digit, a named key (enter, esc, tab,
+# space, up, home, pgdn, del, ...), or f1-f12. A binding is checked before the
+# built-in shortcuts, so it can override them.
+#
+# STATUS: named macros (`define`) and key bindings (`bind`) run in memory now.
+# Sourcing this file at startup is a later milestone; until the loader lands,
+# paste these lines into the command bar one at a time. An empty body removes a
+# macro or binding (PE-style unbind): `define scratch =` / `bind c-j =`.
 
 # --- line editing -----------------------------------------------------------
 
@@ -47,3 +53,15 @@ define fmt = [macro upper-line] [macro tidy]
 
 # Turn on word wrap and the ruler for prose writing.
 define prose = [word-wrap true] [toggle-ruler]
+
+# --- key bindings -----------------------------------------------------------
+
+# Bind keys to the macros above (and to inline sequences). These override the
+# built-in shortcut for the same key.
+bind c-d   = [macro dup-line]
+bind a-u   = [macro upper-line]
+bind f9    = [macro tidy]
+bind c-s-p = [macro prose]
+
+# A binding can also be an inline sequence with no named macro.
+bind a-j   = [join-line]
