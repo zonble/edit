@@ -199,14 +199,14 @@ pub fn command_from_text_with_modes(
     command_from_text_with_argument(text, include_vim_commands, include_emacs_commands)
 }
 
-/// Parse a bracketed command sequence like `[undo] [save] [find foo]` into the
+/// Parse a bracketed command sequence like "[undo] [save] [find foo]" into the
 /// invocations it runs, in order. A step may lead with a repeat count, so
-/// `[3 undo]` expands to three `undo` steps. Returns `None` unless the whole
+/// "[3 undo]" expands to three "undo" steps. Returns "None" unless the whole
 /// string parses: a single bad token rejects the sequence before anything runs,
 /// which is the contract the macro runner relies on (parse failures never
 /// half-execute).
 ///
-/// v1 limits: `split_once(']')` means a bracketed argument cannot contain `]`
+/// v1 limits: "split_once(']')" means a bracketed argument cannot contain "]"
 /// and there is no escaping.
 pub fn command_sequence_from_text(
     input: &str,
@@ -236,16 +236,16 @@ pub fn command_sequence_from_text(
     Some(invocations)
 }
 
-/// A bracketed step may lead with a repeat count: `[3 undo]` runs `undo` three
+/// A bracketed step may lead with a repeat count: "[3 undo]" runs "undo" three
 /// times. Returns the count (default 1) and the remaining command text. A bare
-/// number like `[42]` is left alone so it stays the Goto shorthand. A count
-/// over the cap returns `None` to reject the whole sequence, rather than
+/// number like "[42]" is left alone so it stays the Goto shorthand. A count
+/// over the cap returns "None" to reject the whole sequence, rather than
 /// silently truncating (which could half-run a destructive step).
 fn split_repeat_count(text: &str) -> Option<(usize, &str)> {
     const MAX_REPEAT: usize = 1000;
 
     // Only a pure-integer head in front of an actual command is a repeat count;
-    // anything else (a bare number, `[find foo]`, `[3d x]`) is left untouched.
+    // anything else (a bare number, "[find foo]", "[3d x]") is left untouched.
     let Some((head, rest)) = text.split_once(char::is_whitespace) else {
         return Some((1, text));
     };
@@ -256,14 +256,14 @@ fn split_repeat_count(text: &str) -> Option<(usize, &str)> {
     }
 }
 
-/// Split a `define` argument (`name = [cmd] [cmd]...`) into its name and body.
+/// Split a "define" argument ("name = [cmd] [cmd]...") into its name and body.
 /// The name must be a single word; the body is returned trimmed and may be empty
 /// (an empty body means "remove this macro", PE-style unbind).
 pub(crate) fn macro_name_and_body(arg: &str) -> Option<(&str, &str)> {
     let (name, body) = arg.split_once('=')?;
     let name = name.trim();
     // A name must be a single bare word: no whitespace, and no bracket that
-    // would clash with the `[cmd]` sequence syntax when typed bare.
+    // would clash with the "[cmd]" sequence syntax when typed bare.
     if name.is_empty() || name.contains(|ch: char| ch.is_whitespace() || matches!(ch, '[' | ']')) {
         return None;
     }

@@ -235,8 +235,8 @@ fn commandbar_autocomplete_context(input: &str) -> CommandbarAutocompleteContext
 }
 
 fn submit_commandbar_input(ctx: &mut Context, state: &mut State) {
-    // Own the input up front: every branch below mutates `state`, which a borrow
-    // of `command_bar_input` would forbid.
+    // Own the input up front: every branch below mutates "state", which a borrow
+    // of "command_bar_input" would forbid.
     let input = state.command_bar_input.trim().to_string();
     let include_vim = state.command_bar_include_vim_commands;
     let include_emacs = state.command_bar_include_emacs_commands;

@@ -45,12 +45,12 @@ pub fn command_invocation_from_shortcut(key: InputKey) -> Option<CommandInvocati
     .map(|command| CommandInvocation { command, args: CommandArgs::default() })
 }
 
-/// Parse a PE-style key name like `c-s`, `a-l`, `s-tab`, or `f2` into an
-/// `InputKey`. Modifier prefixes `c-`/`a-`/`s-` (Ctrl/Alt/Shift) are
+/// Parse a PE-style key name like "c-s", "a-l", "s-tab", or "f2" into an
+/// "InputKey". Modifier prefixes "c-"/"a-"/"s-" (Ctrl/Alt/Shift) are
 /// case-insensitive and may be combined; the base is a single letter or digit,
-/// a named key (`enter`, `tab`, `up`, `pgdn`, ...), or `f1`-`f12`. Base letters
-/// are case-insensitive, so Shift must be written explicitly as `s-`. Returns
-/// `None` for anything unrecognized.
+/// a named key ("enter", "tab", "up", "pgdn", ...), or "f1"-"f12". Base letters
+/// are case-insensitive, so Shift must be written explicitly as "s-". Returns
+/// "None" for anything unrecognized.
 pub(crate) fn parse_key_name(name: &str) -> Option<InputKey> {
     let mut rest = name.trim();
     if rest.is_empty() {
