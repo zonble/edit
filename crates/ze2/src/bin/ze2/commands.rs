@@ -22,6 +22,7 @@ mod view_commands;
 pub use definition::{
     Command, CommandArgs, CommandBarShortcut, CommandFocusTarget, CommandInvocation,
 };
+pub(crate) use macro_commands::source_profile_file;
 pub use parse::{
     autocomplete_command_suggestions_with_modes, command_from_text_with_modes,
     command_sequence_from_text,
@@ -103,8 +104,8 @@ pub fn execute_command_invocation(
 }
 
 /// Run a sequence of invocations in order, stopping early if a step aborts the
-/// enclosing macro (see `State::macro_abort`). Top-level callers clear
-/// `macro_abort` before calling so a prior failure does not leak in.
+/// enclosing macro (see "State::macro_abort"). Top-level callers clear
+/// "macro_abort" before calling so a prior failure does not leak in.
 pub fn execute_command_sequence(
     ctx: &mut Context,
     state: &mut State,

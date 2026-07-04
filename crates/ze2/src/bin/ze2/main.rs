@@ -88,6 +88,9 @@ fn run() -> apperr::Result<()> {
         state.add_error(err);
     }
 
+    // PE3 pointed its "PE3" env var at a profile; ze2 uses "ZE2_PROFILE". It is
+    // sourced on the first frame, once a Context exists (see "draw").
+    state.pending_profile = env::var("ZE2_PROFILE").ok().filter(|path| !path.is_empty());
     if handle_args(&mut state)? {
         return Ok(());
     }
@@ -336,6 +339,11 @@ fn print_version() {
 }
 
 fn draw(ctx: &mut Context, state: &mut State) {
+    // Source the startup profile on the first frame, now that a Context exists.
+    if let Some(path) = state.pending_profile.take() {
+        source_profile_file(ctx, state, &path);
+    }
+
     draw_menubar(ctx, state, false);
 
     if ctx.keyboard_input().is_some() {

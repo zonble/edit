@@ -91,6 +91,7 @@ pub enum Command {
     RunMacro,
     BindKey,
     ExecuteRegion,
+    Source,
 }
 
 #[derive(Clone)]

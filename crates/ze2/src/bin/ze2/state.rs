@@ -206,10 +206,10 @@ pub struct State {
     pub command_bar_include_emacs_commands: bool,
 
     // Macros
-    // Named command sequences, invoked by name or `[macro <name>]`. In-memory
+    // Named command sequences, invoked by name or "[macro <name>]". In-memory
     // only for now; a profile loader will persist them later.
     pub macros: std::collections::HashMap<String, Vec<CommandInvocation>>,
-    // Keys bound to command sequences via `bind <key> = [..]`. Consulted in the
+    // Keys bound to command sequences via "bind <key> = [..]". Consulted in the
     // before-editor path, so a binding can override a built-in shortcut.
     pub key_bindings: std::collections::HashMap<InputKey, Vec<CommandInvocation>>,
     // Current macro nesting depth, used to bound recursion.
@@ -217,6 +217,9 @@ pub struct State {
     // Set when a macro step fails; stops the enclosing sequence(s) unwinding
     // instead of running their remaining steps.
     pub macro_abort: bool,
+    // A profile file to source on the first frame (from ZE2_PROFILE). Taken once
+    // because sourcing needs the per-frame Context, unavailable at startup.
+    pub pending_profile: Option<String>,
 
     // Error Log
     // A ring buffer of the last 10 errors.
@@ -322,6 +325,7 @@ impl State {
             key_bindings: std::collections::HashMap::new(),
             macro_depth: 0,
             macro_abort: false,
+            pending_profile: None,
 
             // Error Log
             error_log: [const { String::new() }; 10],
