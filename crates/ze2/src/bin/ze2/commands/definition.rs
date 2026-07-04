@@ -92,6 +92,8 @@ pub enum Command {
     BindKey,
     ExecuteRegion,
     Source,
+    RecordToggle,
+    Replay,
 }
 
 #[derive(Clone)]

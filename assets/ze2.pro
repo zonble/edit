@@ -73,3 +73,10 @@ bind a-j   = [join-line]
 # Bind "execute" to Ctrl-Space: run the current selection (or the current line)
 # as a command sequence, turning the buffer into a macro scratchpad.
 bind c-space = [execute]
+
+# Record a run of commands, then replay it. "record" toggles recording on and
+# off; "replay" runs back what was recorded. Note that ordinary typing and
+# cursor motion are not commands, so only command-bar/menu/shortcut actions are
+# captured (text via the "insert" command).
+bind f7 = [record]
+bind f8 = [replay]

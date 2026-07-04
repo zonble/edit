@@ -220,6 +220,12 @@ pub struct State {
     // A profile file to source on the first frame (from ZE2_PROFILE). Taken once
     // because sourcing needs the per-frame Context, unavailable at startup.
     pub pending_profile: Option<String>,
+    // Command-level record/replay. While recording, each top-level invocation is
+    // appended to recorded; replay feeds them back. replaying guards the recorder
+    // so a replay is not itself recorded.
+    pub recording: bool,
+    pub replaying: bool,
+    pub recorded: Vec<CommandInvocation>,
 
     // Error Log
     // A ring buffer of the last 10 errors.
@@ -326,6 +332,9 @@ impl State {
             macro_depth: 0,
             macro_abort: false,
             pending_profile: None,
+            recording: false,
+            replaying: false,
+            recorded: Vec::new(),
 
             // Error Log
             error_log: [const { String::new() }; 10],

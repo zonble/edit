@@ -78,11 +78,28 @@ pub fn execute_command(ctx: &mut Context, state: &mut State, command: Command) {
     );
 }
 
+// Cap the record buffer so an unattended "record on" cannot grow without bound.
+const MAX_RECORDED: usize = 4096;
+
 pub fn execute_command_invocation(
     ctx: &mut Context,
     state: &mut State,
     invocation: CommandInvocation,
 ) {
+    // Record top-level invocations while recording. Never record a replay (the
+    // replaying guard) or the record/replay controls themselves, and skip steps
+    // inside a macro (depth > 0) since replaying the macro call re-runs them.
+    // Paste is excluded on the web because it completes asynchronously (see
+    // below), so a replayed Paste would race later steps.
+    if state.recording
+        && !state.replaying
+        && state.macro_depth == 0
+        && state.recorded.len() < MAX_RECORDED
+        && !matches!(invocation.command, Command::RecordToggle | Command::Replay | Command::Paste)
+    {
+        state.recorded.push(invocation.clone());
+    }
+
     if matches!(invocation.command, Command::Exit | Command::CloseFileAndExitIfLast) {
         if state.documents.len() <= 1 {
             state.command_bar_error = loc(LocId::WebCannotExitLastDocument).to_string();

@@ -67,6 +67,26 @@ pub(crate) const COMMANDS: &[CommandDefinition] = &[
         handler: source,
         argument_hint: Some("<path>"),
     },
+    CommandDefinition {
+        command: Command::RecordToggle,
+        names: &["record"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: record_toggle,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::Replay,
+        names: &["replay", "play-macro"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: replay,
+        argument_hint: None,
+    },
 ];
 
 fn define_macro(_ctx: &mut Context, state: &mut State, args: CommandArgs) {
@@ -209,8 +229,9 @@ pub(crate) fn source_profile_file(ctx: &mut Context, state: &mut State, path: &s
 // the abort flag is set at the end so an enclosing "source" step stops too.
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 fn run_profile_text(ctx: &mut Context, state: &mut State, text: &str) {
-    // Count profile lines as nested execution so a profile that sources itself
-    // is bounded by the same depth cap as macros.
+    // Count profile lines as nested execution: it bounds "source" that sources
+    // itself, and keeps the recorder from capturing the loaded commands (only
+    // the "source" command is recorded, and replaying it re-loads the file).
     if state.macro_depth >= MAX_MACRO_DEPTH {
         return report_error(state, "profile nesting too deep");
     }
@@ -292,12 +313,51 @@ fn profile_command_lines(text: &str) -> Vec<(usize, String)> {
     lines
 }
 
-// Handlers cannot return a Result, so surface failures in the command bar the
-// same way the built-in query/help commands do, and flag an abort so any
-// enclosing macro stops instead of finishing its remaining steps.
-fn report_error(state: &mut State, message: &str) {
+// "record" toggles command recording. Starting clears the previous take; each
+// top-level command is then appended by execute_command_invocation until stop.
+fn record_toggle(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if state.recording {
+        state.recording = false;
+        report_status(state, &format!("recording stopped ({} steps)", state.recorded.len()));
+    } else {
+        state.recorded.clear();
+        state.recording = true;
+        report_status(state, "recording started");
+    }
+}
+
+// "replay" runs the recorded commands back through the normal execution path.
+// The replaying guard keeps the replay itself out of the recorder.
+fn replay(ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    // A recorded macro/execute/source could expand to "replay"; guard against
+    // replay driving itself.
+    if state.replaying {
+        return report_error(state, "already replaying");
+    }
+    if state.recording {
+        return report_error(state, "stop recording before replay");
+    }
+    if state.recorded.is_empty() {
+        return report_error(state, "nothing recorded to replay");
+    }
+
+    let sequence = state.recorded.clone();
+    state.replaying = true;
+    state.macro_abort = false;
+    execute_command_sequence(ctx, state, sequence);
+    state.replaying = false;
+}
+
+// Show a one-line status in the command bar, the way the query/help commands do.
+fn report_status(state: &mut State, message: &str) {
     state.command_bar_error = message.to_string();
     state.command_bar_active = true;
+}
+
+// Like report_status, but also flags an abort so any enclosing macro stops
+// instead of finishing its remaining steps.
+fn report_error(state: &mut State, message: &str) {
+    report_status(state, message);
     state.macro_abort = true;
 }
 
