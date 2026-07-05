@@ -328,11 +328,11 @@ fn draw_menu_utils(ctx: &mut Context, state: &mut State) {
         if ctx.menubar_menu_button(loc(LocId::UtilsSelectedToLatin), 'A', vk::NULL) {
             execute_command(ctx, state, Command::TransformLatin);
         }
-        if ctx.menubar_menu_button(loc(LocId::UtilsSelectedToKatakana), 'K', vk::NULL) {
-            execute_command(ctx, state, Command::TransformKatakana);
-        }
         if ctx.menubar_menu_button(loc(LocId::UtilsSelectedToHiragana), 'I', vk::NULL) {
             execute_command(ctx, state, Command::TransformHiragana);
+        }
+        if ctx.menubar_menu_button(loc(LocId::UtilsSelectedToKatakana), 'K', vk::NULL) {
+            execute_command(ctx, state, Command::TransformKatakana);
         }
     }
 

@@ -2396,9 +2396,7 @@ impl TextBuffer {
                             let screen_rect = Rect {
                                 left: screen_left.max(destination.left + self.margin_width),
                                 top: screen_top,
-                                right: screen_right
-                                    .max(screen_left + 1)
-                                    .min(destination.right),
+                                right: screen_right.max(screen_left + 1).min(destination.right),
                                 bottom: screen_top + 1,
                             };
 
