@@ -173,8 +173,13 @@ pub fn draw_commandbar(ctx: &mut Context, state: &mut State) {
                 offset_y: 0.0,
             });
             ctx.attr_border();
-            ctx.attr_background_rgba(ctx.indexed(IndexedColor::Red));
-            ctx.attr_foreground_rgba(ctx.indexed(IndexedColor::BrightWhite));
+            let (bg, fg) = if state.command_bar_error_is_warning {
+                (IndexedColor::Yellow, IndexedColor::Black)
+            } else {
+                (IndexedColor::Red, IndexedColor::BrightWhite)
+            };
+            ctx.attr_background_rgba(ctx.indexed(bg));
+            ctx.attr_foreground_rgba(ctx.indexed(fg));
             ctx.attr_padding(Rect::two(0, 1));
             {
                 ctx.label("error", &state.command_bar_error);
@@ -263,6 +268,7 @@ fn submit_commandbar_input(ctx: &mut Context, state: &mut State) {
         if !input.is_empty() {
             state.command_bar_input.clear();
             state.command_bar_error = loc(LocId::CommandBarUnknownCommand).to_string();
+            state.command_bar_error_is_warning = false;
             ctx.needs_rerender();
         }
         return;

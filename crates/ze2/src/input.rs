@@ -52,7 +52,7 @@ impl InputKey {
         InputKeyMod(self.0 & 0xFF000000)
     }
 
-    pub(crate) const fn modifiers_contains(&self, modifier: InputKeyMod) -> bool {
+    pub const fn modifiers_contains(&self, modifier: InputKeyMod) -> bool {
         (self.0 & modifier.0) != 0
     }
 

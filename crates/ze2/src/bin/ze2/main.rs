@@ -339,16 +339,35 @@ fn print_version() {
 }
 
 fn draw(ctx: &mut Context, state: &mut State) {
-    // Source the startup profile on the first frame, now that a Context exists.
-    if let Some(path) = state.pending_profile.take() {
-        source_profile_file(ctx, state, &path);
+    // Load profiles on the first frame, now that a Context exists: the
+    // compiled-in default first, then the user's ZE2_PROFILE, which overrides.
+    if !state.profile_loaded {
+        state.profile_loaded = true;
+        load_default_profile(ctx, state);
+        if let Some(path) = state.pending_profile.take() {
+            source_profile_file(ctx, state, &path);
+        }
+    }
+
+    // A keypress dismisses a stale command-bar message from an earlier frame.
+    // Clear it before running any handler, so a message a user binding reports
+    // this frame survives to be shown. A status message (shown but not focused,
+    // for example a profile-load warning) also closes the command bar, so it
+    // stops blocking the before-editor user bindings and menu accelerators.
+    if ctx.keyboard_input().is_some() {
+        state.command_bar_error.clear();
+        if !state.command_bar_focus {
+            state.command_bar_active = false;
+        }
+    }
+
+    // A user binding overrides any key, so it runs before the menubar and the
+    // editor claim their own keys.
+    if run_user_binding_before_editor(ctx, state) {
+        ctx.set_input_consumed();
     }
 
     draw_menubar(ctx, state, false);
-
-    if ctx.keyboard_input().is_some() {
-        state.command_bar_error.clear();
-    }
 
     if let Some(invocation) = handle_input_before_editor(ctx, state) {
         execute_command_invocation(ctx, state, invocation);
@@ -375,6 +394,9 @@ fn draw(ctx: &mut Context, state: &mut State) {
     }
     if state.wants_goto {
         draw_goto_menu(ctx, state);
+    }
+    if state.wants_fill_mark {
+        draw_fill_mark_menu(ctx, state);
     }
     if state.wants_selection_context_menu {
         draw_selection_context_menu(ctx, state);
@@ -411,10 +433,16 @@ fn draw(ctx: &mut Context, state: &mut State) {
     }
 
     if let Some(key) = ctx.keyboard_input() {
-        // Shortcuts that are not handled as part of the textarea, etc.
+        // Keys the textarea did not handle. Profile key bindings are the source
+        // of truth for app shortcuts; command_invocation_from_shortcut only
+        // still covers the CJK insert keys. These fire regardless of which
+        // widget holds focus, matching the main branch's global shortcuts.
         state.command_bar_error.clear();
 
-        if let Some(invocation) = command_invocation_from_shortcut(key) {
+        if let Some(sequence) = state.key_bindings.get(&key).cloned() {
+            state.macro_abort = false;
+            execute_command_sequence(ctx, state, sequence);
+        } else if let Some(invocation) = command_invocation_from_shortcut(key) {
             execute_command_invocation(ctx, state, invocation);
         } else if key == vk::F3 {
             search_execute(ctx, state, SearchAction::Search);

@@ -2426,6 +2426,11 @@ vi = "mark-block bị tắt khi ngắt dòng tự động được bật"
 zh-hans = "启用自动换行时无法使用 mark-block"
 zh-hant = "啟用自動換行時無法使用 mark-block"
 
+[FillMarkPrompt]
+en = "Fill with character:"
+zh-hans = "填入字符:"
+zh-hant = "填入字元:"
+
 # For input field
 [SearchNeedleLabel]
 en = "Find:"

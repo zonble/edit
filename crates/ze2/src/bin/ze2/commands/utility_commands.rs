@@ -13,6 +13,16 @@ use crate::state::*;
 
 pub(crate) const COMMANDS: &[CommandDefinition] = &[
     CommandDefinition {
+        command: Command::Noop,
+        names: &["noop", "no-op"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: noop,
+        argument_hint: None,
+    },
+    CommandDefinition {
         command: Command::WordCount,
         names: &["word-count", "wc"],
         namesVim: &[],
@@ -164,6 +174,8 @@ pub(crate) const COMMANDS: &[CommandDefinition] = &[
     },
 ];
 
+fn noop(_ctx: &mut Context, _state: &mut State, _args: CommandArgs) {}
+
 fn about(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
     state.wants_about = true;
 }
@@ -207,6 +219,7 @@ fn query_setting(_ctx: &mut Context, state: &mut State, args: CommandArgs) {
     } else {
         "no active document".to_string()
     };
+    state.command_bar_error_is_warning = true;
     state.command_bar_active = true;
 }
 
@@ -283,6 +296,7 @@ fn char_code(_ctx: &mut Context, state: &mut State, args: CommandArgs) {
         || "char EOF".to_string(),
         |ch| format!("char {} 0x{:X}", ch as u32, ch as u32),
     );
+    state.command_bar_error_is_warning = true;
     state.command_bar_active = true;
 }
 
@@ -297,6 +311,7 @@ fn help(_ctx: &mut Context, state: &mut State, args: CommandArgs) {
                 state.command_bar_include_vim_commands,
                 state.command_bar_include_emacs_commands,
             );
+            state.command_bar_error_is_warning = true;
             state.command_bar_active = true;
         }
         None => state.wants_help = true,

@@ -1,100 +1,40 @@
-# ze2.pro: sample macro profile, in the PE2/PE3 ".pro" style.
+# Default ze2 profile: the built-in editor key bindings.
 #
-# A profile is just a list of commands, one per line, the same commands you can
-# type in the command bar (Esc). Comment lines start with '#'. A macro is a
-# named command sequence: "define <name> = [cmd] [cmd] ...", where each [cmd]
-# is a command-bar command. Run a macro by typing its bare name, or "macro
-# <name>". Built-in command names always win a collision, so a macro named
-# "save" is only reachable as "macro save".
+# ze2 compiles this file into the binary and runs it at startup, then loads the
+# file named by the ZE2_PROFILE environment variable, which overrides anything
+# here. Both run before the menubar and text area, so a bind can override any
+# key, including editor and menu keys.
 #
-# Bind a key to a sequence with "bind <key> = [cmd] ...". Key names use the PE
-# modifier prefixes c- (Ctrl), a- (Alt), s- (Shift), combinable and case-
-# insensitive, over a base key: a letter/digit, a named key (enter, esc, tab,
-# space, up, home, pgdn, del, ...), or f1-f12. A binding is checked before the
-# built-in shortcuts, so it can override them.
+# Directives:
+#   define <name> = [cmd] [cmd] ...   name a reusable command sequence
+#   bind <key>   = [cmd] [cmd] ...    bind a key to a command sequence
+#   source <path>                     load another profile file
+# An empty body removes it ("bind c-w ="); "[noop]" reserves a key for the
+# editor without stealing it (used below to document editor-owned keys).
 #
-# Run this file with "source <path>" in the command bar, or point the
-# ZE2_PROFILE environment variable at it to load it automatically on startup.
-# Macros and bindings live in memory for the session. An empty body removes a
-# macro or binding (PE-style unbind): "define scratch =" / "bind c-j =".
-
-# --- line editing -----------------------------------------------------------
-
-# Duplicate the current line (PE3's [push mark][mark line][copy mark] idiom).
-define dup-line = [mark-line] [copy-mark] [paste]
-
-# Cut / copy a whole line without reaching for the mouse.
-define cut-line  = [mark-line] [cut]
-define copy-line = [mark-line] [copy-mark] [unmark]
-
-# Uppercase / lowercase the current line in place.
-define upper-line = [mark-line] [uppercase]
-define lower-line = [mark-line] [lowercase]
-
-# --- text templates ---------------------------------------------------------
-
-# Insert a signature block. "insert" takes the rest of the token as literal text.
-define sig = [insert -- ] [insert-line] [insert Jim Huang]
-
-# Drop a date stamp on a fresh line.
-define stamp = [insert-line] [insert Date: ] [date]
-
-# A step may lead with a repeat count: "[N cmd]" runs cmd N times. Here: open
-# five blank lines below.
-define gap = [5 insert-line]
-
-# --- formatting / composition ----------------------------------------------
-
-# Reflow the paragraph, then save. A plain two-step macro.
-define tidy = [reflow] [save]
-
-# Macros call macros: "fmt" uppercases the line, then runs "tidy". This is the
-# same mechanism as PE3's "[key <name>]". Recursion is capped, so a macro that
-# (directly or indirectly) calls itself stops instead of looping forever.
-define fmt = [macro upper-line] [macro tidy]
-
-# --- editor setup -----------------------------------------------------------
-
-# Turn on word wrap and the ruler for prose writing.
-define prose = [word-wrap true] [toggle-ruler]
-
-# --- key bindings -----------------------------------------------------------
-
-# Bind macros (and inline sequences) to keys. These examples use keys that are
-# free by default; a binding is checked before the built-in shortcut for the
-# same key, so it can also override a default (listed at the end of this file).
-bind c-d   = [macro dup-line]
-bind a-e   = [macro upper-line]
-bind f9    = [macro tidy]
-bind c-s-p = [macro prose]
-
-# A binding can also be an inline sequence with no named macro.
-bind a-j   = [join-line]
-
-# Bind "execute" to Ctrl-Space: run the current selection (or the current line)
-# as a command sequence, turning the buffer into a macro scratchpad.
-bind c-space = [execute]
-
-# Record a run of commands, then replay it. "record" toggles recording on and
-# off; "replay" runs back what was recorded. Note that ordinary typing and
-# cursor motion are not commands, so only command-bar/menu/shortcut actions are
-# captured (text via the "insert" command).
-bind f7 = [record]
-bind f8 = [replay]
-
-# --- default key bindings ---------------------------------------------------
+# Key names: c- (Ctrl), a- (Alt), s- (Shift), combinable and case-insensitive,
+# over a letter, digit, named key (enter, esc, tab, space, up, down, left,
+# right, home, end, pgup, pgdn, ins, del), punctuation alias (comma, slash,
+# lbracket, ...), or f1-f24.
 #
-# The bindings below mirror ze2's built-in shortcuts. They are already active
-# without this file; they are listed so a profile can start from the real
-# defaults and rebind or unbind any of them (unbind with an empty body, e.g.
-# "bind c-w ="). F2/F3/F4 prefill the command bar with save/file/quit and are
-# not command bindings, so they are not listed here.
+# On macOS, a- is the Option key and reaches ze2 only when the terminal sends
+# Option as Meta (Terminal.app "Use Option as Meta Key"; iTerm2 Option = "Esc+";
+# Ghostty macos-option-as-alt = true; kitty macos_option_as_alt yes). Otherwise
+# prefer c- bindings, which arrive unchanged.
+#
+# Full macro and profile guide, with examples: docs/macros.md.
+
+# marks
+# a-f (File menu) and a-u (Utils menu) are intentionally left to the menubar, as
+# on the pre-profile build; bind them in your ZE2_PROFILE if you want fill-mark
+# and unmark on those keys. On macOS, Option+Left arrives as a-b, so it marks a
+# block instead of moving a word back (word nav stays on Ctrl+Left/Right).
 bind a-b   = [mark-block]
 bind a-l   = [mark-line]
 bind a-m   = [move-mark]
 bind a-c   = [copy-mark]
-bind a-f   = [fill-mark]
-bind a-u   = [unmark]
+
+# file / search / app
 bind c-n   = [new]
 bind c-o   = [open]
 bind c-s   = [save]
@@ -105,4 +45,74 @@ bind c-q   = [exit]
 bind c-g   = [goto]
 bind c-f   = [find]
 bind c-r   = [replace]
-bind c-l   = [select-line]
+
+# delete / edit
+bind backspace = [delete-backward]
+bind c-backspace = [delete-line]
+bind c-h = [delete-word-backward]
+bind delete = [delete-forward]
+bind c-delete = [delete-word-forward]
+bind s-delete = [cut]
+bind c-k = [delete-to-line-end]
+
+# newline
+# Tab/Shift+Tab (indent) and Esc (clear selection) are left to the text area, as
+# on the pre-profile build. Bind them in your ZE2_PROFILE to override.
+bind enter = [split-line]
+bind f9 = [split-line]
+
+# navigation
+bind c-home = [move-document-begin]
+bind c-end = [move-document-end]
+bind pgup = [page-up]
+bind pgdn = [page-down]
+bind left = [move-left]
+bind right = [move-right]
+bind c-left = [begin-word]
+bind c-right = [end-word]
+bind up = [move-up]
+bind down = [move-down]
+# Ctrl+Up/Down scroll the view; still owned by the text area.
+bind c-up = [noop]
+bind c-down = [noop]
+
+# selection navigation
+bind c-s-home = [select-document-begin]
+bind c-s-end = [select-document-end]
+bind s-pgup = [select-page-up]
+bind s-pgdn = [select-page-down]
+bind s-left = [select-left]
+bind s-right = [select-right]
+bind c-s-left = [select-word-left]
+bind c-s-right = [select-word-right]
+bind s-up = [select-up]
+bind s-down = [select-down]
+
+# line movement / reserved editor keys
+bind a-up = [move-lines-up]
+bind a-down = [move-lines-down]
+# Ctrl+Alt+Up/Down (add cursor) is not implemented; left to the text area.
+bind c-a-up = [noop]
+bind c-a-down = [noop]
+
+# clipboard / undo / redo
+bind ins = [toggle-overtype]
+bind s-ins = [paste]
+bind c-ins = [copy]
+bind c-a = [select-all]
+bind c-l = [select-line]
+bind c-c = [copy]
+bind c-x = [cut]
+bind c-v = [paste]
+bind c-z = [undo]
+bind c-y = [redo]
+bind c-s-z = [redo]
+
+# editor actions
+bind a-j = [join-line]
+bind a-z = [word-wrap]
+
+# Every editor action above is a command, so you can rebind any key or bind a
+# new one to it (see docs/macros.md for the full list). The few [noop] keys are
+# handled by the text area itself: Ctrl+Up/Down scroll and Ctrl+Alt+Up/Down
+# add a cursor.

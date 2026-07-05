@@ -150,6 +150,22 @@ pub struct State {
     pub reflow_right_margin: CoordType,
     pub reflow_paragraph_margin: CoordType,
 
+    // Editor movement state, so cursor-movement commands can reproduce the text
+    // area's behavior: the sticky column that vertical movement keeps, the cursor
+    // position the previous vertical move left (a fresh vertical move recaptures
+    // the column unless the cursor is still there, so typing, a click, or a
+    // horizontal move all reset it), and the editor viewport height for paging.
+    //
+    // Known limitation: this is a second sticky column, separate from the text
+    // area's own TextareaContent::preferred_column (tui.rs). A bound move command
+    // and a native arrow key do not share it, so alternating between them can drop
+    // the goal column. Unifying the two would mean routing vertical nav through
+    // the text area's state; deferred. self-correction via last_vertical_cursor
+    // keeps a run of bound moves consistent, which is the common case.
+    pub preferred_column: CoordType,
+    pub last_vertical_cursor: Option<Point>,
+    pub editor_viewport_height: CoordType,
+
     // Dialog & Feature Requests
     pub wants_save: bool,
     pub wants_go_to_file: bool,
@@ -167,6 +183,8 @@ pub struct State {
     pub wants_goto: bool,
     pub goto_target: String,
     pub goto_invalid: bool,
+    pub wants_fill_mark: bool,
+    pub fill_mark_input: String,
 
     // Encoding & Settings
     pub wants_encoding_picker: bool,
@@ -201,6 +219,9 @@ pub struct State {
     pub command_bar_focus: bool,
     pub command_bar_input: String,
     pub command_bar_error: String,
+    // The message in command_bar_error is an informational status, not a
+    // failure, so it should be drawn as a warning rather than an error.
+    pub command_bar_error_is_warning: bool,
     pub command_bar_autocomplete_index: Option<usize>,
     pub command_bar_include_vim_commands: bool,
     pub command_bar_include_emacs_commands: bool,
@@ -209,16 +230,26 @@ pub struct State {
     // Named command sequences, invoked by name or "[macro <name>]". In-memory
     // only for now; a profile loader will persist them later.
     pub macros: std::collections::HashMap<String, Vec<CommandInvocation>>,
-    // Keys bound to command sequences via "bind <key> = [..]". Consulted in the
-    // before-editor path, so a binding can override a built-in shortcut.
+    // Keys bound to command sequences via "bind <key> = [..]". Most binds are
+    // kept in both maps: user_bindings is checked before the menubar/editor so
+    // profiles can override any key, while key_bindings is checked after
+    // focused widgets for global shortcuts. The embedded default profile's
+    // [noop] placeholders stay out of user_bindings so they document
+    // editor-owned keys without stealing them.
     pub key_bindings: std::collections::HashMap<InputKey, Vec<CommandInvocation>>,
+    pub user_bindings: std::collections::HashMap<InputKey, Vec<CommandInvocation>>,
+    // True only while the compiled default profile is loading.
+    pub loading_default_profile: bool,
     // Current macro nesting depth, used to bound recursion.
     pub macro_depth: usize,
     // Set when a macro step fails; stops the enclosing sequence(s) unwinding
     // instead of running their remaining steps.
     pub macro_abort: bool,
-    // A profile file to source on the first frame (from ZE2_PROFILE). Taken once
-    // because sourcing needs the per-frame Context, unavailable at startup.
+    // Startup profile loading, done on the first frame because it needs the
+    // per-frame Context. profile_loaded gates the one-shot; pending_profile is
+    // the optional user override file (from ZE2_PROFILE) loaded after the
+    // compiled-in default.
+    pub profile_loaded: bool,
     pub pending_profile: Option<String>,
     // Command-level record/replay. While recording, each top-level invocation is
     // appended to recorded; replay feeds them back. replaying guards the recorder
@@ -270,6 +301,9 @@ impl State {
             reflow_left_margin: 0,
             reflow_right_margin: 0,
             reflow_paragraph_margin: 0,
+            preferred_column: 0,
+            last_vertical_cursor: None,
+            editor_viewport_height: 1,
 
             // Dialog & Feature Requests
             wants_save: false,
@@ -288,6 +322,8 @@ impl State {
             wants_goto: false,
             goto_target: Default::default(),
             goto_invalid: false,
+            wants_fill_mark: false,
+            fill_mark_input: Default::default(),
 
             // Encoding & Settings
             wants_encoding_picker: false,
@@ -322,6 +358,7 @@ impl State {
             command_bar_focus: false,
             command_bar_input: Default::default(),
             command_bar_error: Default::default(),
+            command_bar_error_is_warning: false,
             command_bar_autocomplete_index: None,
             command_bar_include_vim_commands: settings_command_bar_include_vim_commands,
             command_bar_include_emacs_commands: settings_command_bar_include_emacs_commands,
@@ -329,8 +366,11 @@ impl State {
             // Macros
             macros: std::collections::HashMap::new(),
             key_bindings: std::collections::HashMap::new(),
+            user_bindings: std::collections::HashMap::new(),
+            loading_default_profile: false,
             macro_depth: 0,
             macro_abort: false,
+            profile_loaded: false,
             pending_profile: None,
             recording: false,
             replaying: false,
@@ -365,6 +405,7 @@ impl State {
         self.wants_close
             || self.wants_exit
             || self.wants_goto
+            || self.wants_fill_mark
             || self.wants_file_picker != StateFilePicker::None
             || self.wants_language_picker
             || self.wants_encoding_change != StateEncodingChange::None

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-use ze2::buffer::{CursorMovement, TextMarkKind};
+use ze2::buffer::{CursorMovement, MoveLineDirection, TextBuffer, TextMarkKind};
 use ze2::helpers::{CoordType, Point};
 use ze2::tui::Context;
 
@@ -330,6 +330,300 @@ pub(crate) const COMMANDS: &[CommandDefinition] = &[
         handler: copy_from_command,
         argument_hint: None,
     },
+    // Cursor movement, selection, and deletion primitives, so a profile can bind
+    // any key to an editor action. Each is a thin wrapper over a buffer method.
+    CommandDefinition {
+        command: Command::MoveLeft,
+        names: &["move-left"],
+        namesVim: &[],
+        namesEmacs: &["backward-char"],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: move_left,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::MoveRight,
+        names: &["move-right"],
+        namesVim: &[],
+        namesEmacs: &["forward-char"],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: move_right,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::MoveToDocumentBegin,
+        names: &["move-document-begin", "document-begin"],
+        namesVim: &[],
+        namesEmacs: &["beginning-of-buffer"],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: move_document_begin,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::MoveToDocumentEnd,
+        names: &["move-document-end", "document-end"],
+        namesVim: &[],
+        namesEmacs: &["end-of-buffer"],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: move_document_end,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::MoveLinesUp,
+        names: &["move-lines-up"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: move_lines_up,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::MoveLinesDown,
+        names: &["move-lines-down"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: move_lines_down,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::SelectLeft,
+        names: &["select-left"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: select_left,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::SelectRight,
+        names: &["select-right"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: select_right,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::SelectWordLeft,
+        names: &["select-word-left"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: select_word_left,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::SelectWordRight,
+        names: &["select-word-right"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: select_word_right,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::SelectToDocumentBegin,
+        names: &["select-document-begin"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: select_document_begin,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::SelectToDocumentEnd,
+        names: &["select-document-end"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: select_document_end,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::DeleteForward,
+        names: &["delete-forward"],
+        namesVim: &[],
+        namesEmacs: &["delete-char"],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: delete_forward,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::DeleteBackward,
+        names: &["delete-backward"],
+        namesVim: &[],
+        namesEmacs: &["delete-backward-char"],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: delete_backward,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::DeleteWordForward,
+        names: &["delete-word-forward"],
+        namesVim: &[],
+        namesEmacs: &["kill-word"],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: delete_word_forward,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::DeleteWordBackward,
+        names: &["delete-word-backward"],
+        namesVim: &[],
+        namesEmacs: &["backward-kill-word"],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: delete_word_backward,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::DeleteLine,
+        names: &["delete-line"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: delete_line,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::DeleteToLineEnd,
+        names: &["delete-to-line-end"],
+        namesVim: &[],
+        namesEmacs: &["kill-line"],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: delete_to_line_end,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::ToggleOvertype,
+        names: &["toggle-overtype", "overtype"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: toggle_overtype,
+        argument_hint: None,
+    },
+    // Vertical movement and paging. These keep the sticky column in State, so
+    // they read and write State directly instead of only the buffer.
+    CommandDefinition {
+        command: Command::MoveUp,
+        names: &["move-up"],
+        namesVim: &[],
+        namesEmacs: &["previous-line"],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: move_up,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::MoveDown,
+        names: &["move-down"],
+        namesVim: &[],
+        namesEmacs: &["next-line"],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: move_down,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::PageUp,
+        names: &["page-up"],
+        namesVim: &[],
+        namesEmacs: &["scroll-down"],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: page_up,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::PageDown,
+        names: &["page-down"],
+        namesVim: &[],
+        namesEmacs: &["scroll-up"],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: page_down,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::SelectUp,
+        names: &["select-up"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: select_up,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::SelectDown,
+        names: &["select-down"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: select_down,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::SelectPageUp,
+        names: &["select-page-up"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: select_page_up,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::SelectPageDown,
+        names: &["select-page-down"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: select_page_down,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::SelectToVisualLineBegin,
+        names: &["select-line-begin"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: select_line_begin,
+        argument_hint: None,
+    },
+    CommandDefinition {
+        command: Command::SelectToVisualLineEnd,
+        names: &["select-line-end"],
+        namesVim: &[],
+        namesEmacs: &[],
+        loc_id: None,
+        default_focus_target: CommandFocusTarget::Default,
+        handler: select_line_end,
+        argument_hint: None,
+    },
 ];
 
 fn undo(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
@@ -444,6 +738,320 @@ fn backtab_word(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
     }
 }
 
+fn move_left(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        let mut buf = doc.buffer.borrow_mut();
+        // With a selection, a plain move collapses to its near edge, matching the
+        // text area; otherwise it steps one grapheme.
+        if let Some((beg, _)) = buf.selection_range() {
+            buf.cursor_move_to_logical(beg.logical_pos);
+        } else {
+            buf.cursor_move_delta(CursorMovement::Grapheme, -1);
+        }
+    }
+}
+
+fn move_right(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        let mut buf = doc.buffer.borrow_mut();
+        if let Some((_, end)) = buf.selection_range() {
+            buf.cursor_move_to_logical(end.logical_pos);
+        } else {
+            buf.cursor_move_delta(CursorMovement::Grapheme, 1);
+        }
+    }
+}
+
+fn move_document_begin(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().cursor_move_to_logical(Point::default());
+    }
+}
+
+fn move_document_end(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().cursor_move_to_logical(Point::MAX);
+    }
+}
+
+fn move_lines_up(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().move_selected_lines(MoveLineDirection::Up);
+    }
+}
+
+fn move_lines_down(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().move_selected_lines(MoveLineDirection::Down);
+    }
+}
+
+fn select_left(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().selection_update_delta(CursorMovement::Grapheme, -1);
+    }
+}
+
+fn select_right(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().selection_update_delta(CursorMovement::Grapheme, 1);
+    }
+}
+
+fn select_word_left(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().selection_update_delta(CursorMovement::Word, -1);
+    }
+}
+
+fn select_word_right(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().selection_update_delta(CursorMovement::Word, 1);
+    }
+}
+
+fn select_document_begin(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().selection_update_logical(Point::default());
+    }
+}
+
+fn select_document_end(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().selection_update_logical(Point::MAX);
+    }
+}
+
+fn delete_forward(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().delete(CursorMovement::Grapheme, 1);
+    }
+}
+
+fn delete_backward(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().delete(CursorMovement::Grapheme, -1);
+    }
+}
+
+fn delete_word_forward(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().delete(CursorMovement::Word, 1);
+    }
+}
+
+fn delete_word_backward(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().delete(CursorMovement::Word, -1);
+    }
+}
+
+fn delete_line(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().delete_line();
+    }
+}
+
+fn delete_to_line_end(ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        doc.buffer.borrow_mut().delete_to_end_of_line(ctx.clipboard_mut());
+    }
+}
+
+fn toggle_overtype(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        let mut buf = doc.buffer.borrow_mut();
+        let overtype = buf.is_overtype();
+        buf.set_overtype(!overtype);
+    }
+}
+
+// Recapture the sticky column unless this continues a run of vertical moves,
+// i.e. the cursor is still exactly where the previous vertical move left it.
+// Typing, a click, or a horizontal move all shift the cursor, which resets it.
+fn vertical_move_begin(state: &mut State) -> Option<()> {
+    let cursor = state.documents.active()?.buffer.borrow().cursor_visual_pos();
+    if state.last_vertical_cursor != Some(cursor) {
+        state.preferred_column = cursor.x;
+    }
+    Some(())
+}
+
+// Record where a vertical move left the cursor, so the next one can tell whether
+// it continues the run (see vertical_move_begin).
+fn vertical_move_end(state: &mut State) {
+    state.last_vertical_cursor =
+        state.documents.active().map(|doc| doc.buffer.borrow().cursor_visual_pos());
+}
+
+// The visual row a vertical move starts from. With a selection active it is the
+// near edge -- top for an upward move, bottom for a downward one -- and the
+// second field is that edge's column, so the caller can adopt it as the sticky
+// column (paging and stepping then collapse a selection to the same corner).
+// With no selection it is the cursor row and None (keep the existing sticky
+// column).
+fn vertical_move_base_row(buf: &TextBuffer, downward: bool) -> (CoordType, Option<CoordType>) {
+    match buf.selection_range() {
+        Some((beg, end)) => {
+            let edge = if downward { end } else { beg };
+            (edge.visual_pos.y, Some(edge.visual_pos.x))
+        }
+        None => (buf.cursor_visual_pos().y, None),
+    }
+}
+
+fn move_up(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    let Some(()) = vertical_move_begin(state) else { return };
+    if let Some(doc) = state.documents.active() {
+        let mut buf = doc.buffer.borrow_mut();
+        let (base_y, edge_x) = vertical_move_base_row(&buf, false);
+        if let Some(x) = edge_x {
+            state.preferred_column = x;
+        }
+        let mut x = state.preferred_column;
+        let y = base_y - 1;
+        if y < 0 {
+            x = 0;
+            state.preferred_column = 0;
+        }
+        buf.cursor_move_to_visual(Point { x, y });
+    }
+    vertical_move_end(state);
+}
+
+fn move_down(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    let Some(()) = vertical_move_begin(state) else { return };
+    if let Some(doc) = state.documents.active() {
+        let mut buf = doc.buffer.borrow_mut();
+        let (base_y, edge_x) = vertical_move_base_row(&buf, true);
+        if let Some(x) = edge_x {
+            state.preferred_column = x;
+        }
+        let mut x = state.preferred_column;
+        let y = base_y + 1;
+        if y >= buf.visual_line_count() {
+            x = CoordType::MAX;
+        }
+        buf.cursor_move_to_visual(Point { x, y });
+        if x == CoordType::MAX {
+            state.preferred_column = buf.cursor_visual_pos().x;
+        }
+    }
+    vertical_move_end(state);
+}
+
+fn page_up(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    let Some(()) = vertical_move_begin(state) else { return };
+    let height = (state.editor_viewport_height - 1).max(1);
+    if let Some(doc) = state.documents.active() {
+        let mut buf = doc.buffer.borrow_mut();
+        // Page from the caret, matching the text area's PgUp. Unlike Up, it does
+        // not collapse to a selection edge; it only resets the sticky column when
+        // the caret is already on the first line.
+        if buf.cursor_visual_pos().y == 0 {
+            state.preferred_column = 0;
+        }
+        let y = buf.cursor_visual_pos().y - height;
+        buf.cursor_move_to_visual(Point { x: state.preferred_column, y });
+    }
+    vertical_move_end(state);
+}
+
+fn page_down(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    let Some(()) = vertical_move_begin(state) else { return };
+    let height = (state.editor_viewport_height - 1).max(1);
+    if let Some(doc) = state.documents.active() {
+        let mut buf = doc.buffer.borrow_mut();
+        // Page from the caret, matching the text area's PgDn: reset the sticky
+        // column to the line end only when already on the last line.
+        if buf.cursor_visual_pos().y >= buf.visual_line_count() - 1 {
+            state.preferred_column = CoordType::MAX;
+        }
+        let y = buf.cursor_visual_pos().y + height;
+        buf.cursor_move_to_visual(Point { x: state.preferred_column, y });
+        if state.preferred_column == CoordType::MAX {
+            state.preferred_column = buf.cursor_visual_pos().x;
+        }
+    }
+    vertical_move_end(state);
+}
+
+fn select_up(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    let Some(()) = vertical_move_begin(state) else { return };
+    if let Some(doc) = state.documents.active() {
+        let mut buf = doc.buffer.borrow_mut();
+        if buf.cursor_visual_pos().y == 0 {
+            state.preferred_column = 0;
+        }
+        let y = buf.cursor_visual_pos().y - 1;
+        buf.selection_update_visual(Point { x: state.preferred_column, y });
+    }
+    vertical_move_end(state);
+}
+
+fn select_down(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    let Some(()) = vertical_move_begin(state) else { return };
+    if let Some(doc) = state.documents.active() {
+        let mut buf = doc.buffer.borrow_mut();
+        if buf.cursor_visual_pos().y >= buf.visual_line_count() - 1 {
+            state.preferred_column = CoordType::MAX;
+        }
+        let y = buf.cursor_visual_pos().y + 1;
+        buf.selection_update_visual(Point { x: state.preferred_column, y });
+        if state.preferred_column == CoordType::MAX {
+            state.preferred_column = buf.cursor_visual_pos().x;
+        }
+    }
+    vertical_move_end(state);
+}
+
+fn select_page_up(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    let Some(()) = vertical_move_begin(state) else { return };
+    let height = (state.editor_viewport_height - 1).max(1);
+    if let Some(doc) = state.documents.active() {
+        let mut buf = doc.buffer.borrow_mut();
+        if buf.cursor_visual_pos().y == 0 {
+            state.preferred_column = 0;
+        }
+        let y = buf.cursor_visual_pos().y - height;
+        buf.selection_update_visual(Point { x: state.preferred_column, y });
+    }
+    vertical_move_end(state);
+}
+
+fn select_page_down(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    let Some(()) = vertical_move_begin(state) else { return };
+    let height = (state.editor_viewport_height - 1).max(1);
+    if let Some(doc) = state.documents.active() {
+        let mut buf = doc.buffer.borrow_mut();
+        if buf.cursor_visual_pos().y >= buf.visual_line_count() - 1 {
+            state.preferred_column = CoordType::MAX;
+        }
+        let y = buf.cursor_visual_pos().y + height;
+        buf.selection_update_visual(Point { x: state.preferred_column, y });
+        if state.preferred_column == CoordType::MAX {
+            state.preferred_column = buf.cursor_visual_pos().x;
+        }
+    }
+    vertical_move_end(state);
+}
+
+fn select_line_begin(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        let mut buf = doc.buffer.borrow_mut();
+        let y = buf.cursor_visual_pos().y;
+        buf.selection_update_visual(Point { x: 0, y });
+    }
+}
+
+fn select_line_end(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
+    if let Some(doc) = state.documents.active() {
+        let mut buf = doc.buffer.borrow_mut();
+        let y = buf.cursor_visual_pos().y;
+        buf.selection_update_visual(Point { x: CoordType::MAX, y });
+    }
+}
+
 fn mark_line(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
     if let Some(doc) = state.documents.active() {
         doc.buffer.borrow_mut().mark(TextMarkKind::Line);
@@ -461,6 +1069,7 @@ fn mark_block(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
         let mut tb = doc.buffer.borrow_mut();
         if tb.is_word_wrap_enabled() {
             state.command_bar_error = loc(LocId::CommandMarkBlockWordWrapEnabled).to_string();
+            state.command_bar_error_is_warning = false;
             return;
         }
         tb.mark(TextMarkKind::Block);
@@ -498,10 +1107,17 @@ fn delete_mark(ctx: &mut Context, state: &mut State, _args: CommandArgs) {
 }
 
 fn fill_mark(_ctx: &mut Context, state: &mut State, args: CommandArgs) {
-    if let Some(doc) = state.documents.active()
-        && let Some(text) = args.argument
-    {
-        doc.buffer.borrow_mut().fill_mark(text.as_bytes());
+    if let Some(text) = args.argument {
+        if let Some(doc) = state.documents.active() {
+            doc.buffer.borrow_mut().fill_mark(text.as_bytes());
+        }
+        return;
+    }
+
+    // No fill character was given (for example a bare "[fill-mark]" binding), so
+    // prompt for one, but only when there is a mark to fill.
+    if state.documents.active().is_some_and(|doc| doc.buffer.borrow().has_mark()) {
+        state.wants_fill_mark = true;
     }
 }
 
@@ -536,5 +1152,33 @@ fn copy_to_command(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
 fn copy_from_command(_ctx: &mut Context, state: &mut State, _args: CommandArgs) {
     if let Some(doc) = state.documents.active() {
         doc.buffer.borrow_mut().write_canon(state.command_bar_input.as_bytes());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ze2::buffer::TextBuffer;
+    use ze2::helpers::Point;
+
+    use super::vertical_move_base_row;
+
+    #[test]
+    fn vertical_move_collapses_to_selection_edge() {
+        let mut buf = TextBuffer::new(false).unwrap();
+        buf.set_crlf(false);
+        buf.set_insert_final_newline(false);
+        buf.write_raw(b"line one\nline two\nline three");
+
+        // No selection: start from the cursor row, leave the sticky column alone.
+        buf.cursor_move_to_visual(Point { x: 4, y: 1 });
+        assert_eq!(vertical_move_base_row(&buf, true), (1, None));
+        assert_eq!(vertical_move_base_row(&buf, false), (1, None));
+
+        // Selection spanning rows 0..2: a downward move starts at the bottom edge
+        // and an upward move at the top edge, each adopting that edge's column.
+        buf.cursor_move_to_visual(Point { x: 2, y: 0 });
+        buf.selection_update_visual(Point { x: 5, y: 2 });
+        assert_eq!(vertical_move_base_row(&buf, true), (2, Some(5)));
+        assert_eq!(vertical_move_base_row(&buf, false), (0, Some(2)));
     }
 }

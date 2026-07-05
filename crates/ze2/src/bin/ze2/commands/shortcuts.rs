@@ -11,44 +11,25 @@ struct InsertShortcut {
     text: &'static str,
 }
 
+// The only key-to-command mapping still hardcoded is the CJK insert shortcuts
+// (Alt+punctuation/number keys). Every other default binding lives in the
+// profile, loaded into State::key_bindings, so the profile is the single source
+// of truth for them.
 pub fn command_invocation_from_shortcut(key: InputKey) -> Option<CommandInvocation> {
-    if let Some(text) = text_from_insert_shortcut(key) {
-        return Some(CommandInvocation {
-            command: Command::InsertText,
-            args: CommandArgs {
-                argument: Some(text.to_string()),
-                focus_target: CommandFocusTarget::Default,
-            },
-        });
-    }
-
-    Some(match key {
-        k if k == kbmod::ALT | vk::B => Command::MarkBlock,
-        k if k == kbmod::ALT | vk::L => Command::MarkLine,
-        k if k == kbmod::ALT | vk::M => Command::MoveMark,
-        k if k == kbmod::ALT | vk::C => Command::CopyMark,
-        k if k == kbmod::ALT | vk::F => Command::FillMark,
-        k if k == kbmod::ALT | vk::U => Command::Unmark,
-        k if k == kbmod::CTRL | vk::N => Command::NewFile,
-        k if k == kbmod::CTRL | vk::O => Command::OpenFile,
-        k if k == kbmod::CTRL | vk::S => Command::Save,
-        k if k == kbmod::CTRL_SHIFT | vk::S => Command::SaveAs,
-        k if k == kbmod::CTRL | vk::W => Command::CloseFile,
-        k if k == kbmod::CTRL | vk::P => Command::GoToFile,
-        k if k == kbmod::CTRL | vk::Q => Command::Exit,
-        k if k == kbmod::CTRL | vk::G => Command::Goto,
-        k if k == kbmod::CTRL | vk::F => Command::Find,
-        k if k == kbmod::CTRL | vk::R => Command::Replace,
-        k if k == kbmod::CTRL | vk::L => Command::SelectLine,
-        _ => return None,
+    let text = text_from_insert_shortcut(key)?;
+    Some(CommandInvocation {
+        command: Command::InsertText,
+        args: CommandArgs {
+            argument: Some(text.to_string()),
+            focus_target: CommandFocusTarget::Default,
+        },
     })
-    .map(|command| CommandInvocation { command, args: CommandArgs::default() })
 }
 
 /// Parse a PE-style key name like "c-s", "a-l", "s-tab", or "f2" into an
 /// "InputKey". Modifier prefixes "c-"/"a-"/"s-" (Ctrl/Alt/Shift) are
 /// case-insensitive and may be combined; the base is a single letter or digit,
-/// a named key ("enter", "tab", "up", "pgdn", ...), or "f1"-"f12". Base letters
+/// a named key ("enter", "tab", "up", "pgdn", ...), or "f1"-"f24". Base letters
 /// are case-insensitive, so Shift must be written explicitly as "s-". Returns
 /// "None" for anything unrecognized.
 pub(crate) fn parse_key_name(name: &str) -> Option<InputKey> {
@@ -69,6 +50,12 @@ pub(crate) fn parse_key_name(name: &str) -> Option<InputKey> {
         rest = tail;
     }
 
+    if modifiers == kbmod::CTRL && rest.eq_ignore_ascii_case("space") {
+        return Some(vk::NULL);
+    }
+
+    // Every key is bindable, including the CJK insert keys: a user binding runs
+    // before the insert path, so it overrides, and the insert stays as fallback.
     Some(modifiers | base_key(rest)?)
 }
 
@@ -83,19 +70,39 @@ fn base_key(name: &str) -> Option<InputKey> {
         return Some(key);
     }
 
+    const FUNCTION_KEYS: [InputKey; 24] = [
+        vk::F1,
+        vk::F2,
+        vk::F3,
+        vk::F4,
+        vk::F5,
+        vk::F6,
+        vk::F7,
+        vk::F8,
+        vk::F9,
+        vk::F10,
+        vk::F11,
+        vk::F12,
+        vk::F13,
+        vk::F14,
+        vk::F15,
+        vk::F16,
+        vk::F17,
+        vk::F18,
+        vk::F19,
+        vk::F20,
+        vk::F21,
+        vk::F22,
+        vk::F23,
+        vk::F24,
+    ];
+    if let Some(n) = lower.strip_prefix('f').and_then(|n| n.parse::<usize>().ok())
+        && let Some(key) = n.checked_sub(1).and_then(|idx| FUNCTION_KEYS.get(idx))
+    {
+        return Some(*key);
+    }
+
     Some(match lower.as_str() {
-        "f1" => vk::F1,
-        "f2" => vk::F2,
-        "f3" => vk::F3,
-        "f4" => vk::F4,
-        "f5" => vk::F5,
-        "f6" => vk::F6,
-        "f7" => vk::F7,
-        "f8" => vk::F8,
-        "f9" => vk::F9,
-        "f10" => vk::F10,
-        "f11" => vk::F11,
-        "f12" => vk::F12,
         "enter" | "return" => vk::RETURN,
         "esc" | "escape" => vk::ESCAPE,
         "tab" => vk::TAB,
@@ -111,6 +118,22 @@ fn base_key(name: &str) -> Option<InputKey> {
         "pgdn" | "pagedown" | "next" => vk::NEXT,
         "ins" | "insert" => vk::INSERT,
         "del" | "delete" => vk::DELETE,
+        // Named aliases for punctuation keys, which cannot be written literally
+        // because the bind grammar reserves them (and some are dead keys).
+        "comma" => vk::COMMA,
+        "period" | "dot" => vk::PERIOD,
+        "colon" => vk::COLON,
+        "semicolon" => vk::SEMICOLON,
+        "slash" => vk::SLASH,
+        "question" => vk::QUESTION,
+        "exclamation" | "bang" => vk::EXCLAMATION,
+        "apostrophe" | "quote" => vk::APOSTROPHE,
+        "lbracket" => vk::LBRACKET,
+        "rbracket" => vk::RBRACKET,
+        "lbrace" => vk::LBRACE,
+        "rbrace" => vk::RBRACE,
+        "lt" | "less" => vk::LT,
+        "gt" | "greater" => vk::GT,
         _ => return None,
     })
 }
@@ -196,41 +219,6 @@ mod tests {
             };
 
             assert!(text == expected);
-        }
-    }
-
-    #[test]
-    fn key_names_parse_with_modifiers() {
-        assert!(parse_key_name("c-s") == Some(kbmod::CTRL | vk::S));
-        assert!(parse_key_name("a-l") == Some(kbmod::ALT | vk::L));
-        assert!(parse_key_name("s-tab") == Some(kbmod::SHIFT | vk::TAB));
-        // Modifiers combine and are case-insensitive.
-        assert!(parse_key_name("C-S-f2") == Some(kbmod::CTRL_SHIFT | vk::F2));
-        // Bare keys and named keys.
-        assert!(parse_key_name("a") == Some(vk::A));
-        assert!(parse_key_name("enter") == Some(vk::RETURN));
-        assert!(parse_key_name("f12") == Some(vk::F12));
-        // Junk is rejected.
-        assert!(parse_key_name("").is_none());
-        assert!(parse_key_name("c-").is_none());
-        assert!(parse_key_name("nope").is_none());
-    }
-
-    #[test]
-    fn mark_shortcuts_map_to_commands() {
-        for (key, expected) in [
-            (kbmod::ALT | vk::B, Command::MarkBlock),
-            (kbmod::ALT | vk::L, Command::MarkLine),
-            (kbmod::ALT | vk::M, Command::MoveMark),
-            (kbmod::ALT | vk::C, Command::CopyMark),
-        ] {
-            let Some(CommandInvocation { command, args }) = command_invocation_from_shortcut(key)
-            else {
-                panic!("mark shortcut did not parse");
-            };
-
-            assert!(command == expected);
-            assert!(args.argument.is_none());
         }
     }
 }

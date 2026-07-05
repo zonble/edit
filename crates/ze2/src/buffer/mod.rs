@@ -2912,6 +2912,10 @@ impl TextBuffer {
         self.set_selection(None);
     }
 
+    pub fn has_mark(&self) -> bool {
+        self.mark.is_some()
+    }
+
     pub fn copy_mark(&mut self, clipboard: &mut Clipboard) {
         let Some(mark) = self.mark else {
             return;
@@ -3005,12 +3009,17 @@ impl TextBuffer {
         let Some(mark) = self.mark else {
             return;
         };
-        // Fill repeats a single byte. A multibyte char would write only its lead
-        // byte and corrupt the buffer's UTF-8, so accept ASCII fill chars only.
-        let Some(&ch) = text.first() else {
+        // Fill with the first character of `text`. It may be multibyte, such as a
+        // full-width CJK character, so measure its column width and later pad any
+        // leftover columns with spaces rather than writing a partial code point.
+        let Some(fill_char) = std::str::from_utf8(text).ok().and_then(|s| s.chars().next()) else {
             return;
         };
-        if !ch.is_ascii() {
+        let mut fill_buf = [0u8; 4];
+        let fill = fill_char.encode_utf8(&mut fill_buf).as_bytes();
+        let fill_width =
+            MeasurementConfig::new(&fill).goto_offset(fill.len()).visual_pos.x as usize;
+        if fill_width == 0 {
             return;
         }
         match mark.kind {
@@ -3020,14 +3029,28 @@ impl TextBuffer {
                 };
                 let mut text = Vec::new();
                 self.buffer.extract_raw(beg.offset..end.offset, &mut text, 0);
-                let replacement = Self::filled_linear_mark_text(&text, ch);
+                let replacement =
+                    Self::filled_linear_mark_text(&text, fill, fill_width, self.tab_size);
                 self.edit_begin(HistoryType::Other, beg);
                 self.edit_delete(end);
                 self.edit_write(&replacement);
                 self.edit_end();
-                self.mark = Some(TextMark { end: self.cursor.logical_pos, ..mark });
+                // A char fill can change the text length, so the anchor at the
+                // cursor-facing (max) end tracks the cursor to stay on the filled
+                // text; the far anchor is kept so a backward Char mark (from
+                // mark-selection) is not collapsed. A line fill preserves the line
+                // structure, so its mark still covers the same lines; moving an
+                // end to the cursor would push the mark onto the next line,
+                // because the cursor lands just past the trailing newline.
+                if mark.kind == TextMarkKind::Char {
+                    self.mark = Some(if mark.beg >= mark.end {
+                        TextMark { beg: self.cursor.logical_pos, ..mark }
+                    } else {
+                        TextMark { end: self.cursor.logical_pos, ..mark }
+                    });
+                }
             }
-            TextMarkKind::Block => self.fill_block_mark(mark, ch),
+            TextMarkKind::Block => self.fill_block_mark(mark, fill, fill_width),
         }
     }
 
@@ -3074,23 +3097,63 @@ impl TextBuffer {
         self.edit_end_grouping();
     }
 
-    fn filled_linear_mark_text(text: &[u8], ch: u8) -> Vec<u8> {
+    fn filled_linear_mark_text(
+        text: &[u8],
+        fill: &[u8],
+        fill_width: usize,
+        tab_size: CoordType,
+    ) -> Vec<u8> {
         let mut replacement = Vec::with_capacity(text.len());
         let mut segment_start = 0;
         for (idx, byte) in text.iter().enumerate() {
             if matches!(*byte, b'\r' | b'\n') {
-                Self::append_filled_segment(&mut replacement, &text[segment_start..idx], ch);
+                Self::append_filled_segment(
+                    &mut replacement,
+                    &text[segment_start..idx],
+                    fill,
+                    fill_width,
+                    tab_size,
+                );
                 replacement.push(*byte);
                 segment_start = idx + 1;
             }
         }
-        Self::append_filled_segment(&mut replacement, &text[segment_start..], ch);
+        Self::append_filled_segment(
+            &mut replacement,
+            &text[segment_start..],
+            fill,
+            fill_width,
+            tab_size,
+        );
         replacement
     }
 
-    fn append_filled_segment(replacement: &mut Vec<u8>, segment: &[u8], ch: u8) {
-        let count = MeasurementConfig::new(&segment).goto_offset(segment.len()).visual_pos.x;
-        replacement.resize(replacement.len() + count as usize, ch);
+    fn append_filled_segment(
+        replacement: &mut Vec<u8>,
+        segment: &[u8],
+        fill: &[u8],
+        fill_width: usize,
+        tab_size: CoordType,
+    ) {
+        let count = MeasurementConfig::new(&segment)
+            .with_tab_size(tab_size)
+            .goto_offset(segment.len())
+            .visual_pos
+            .x;
+        Self::extend_fill_run(replacement, fill, fill_width, count as usize);
+    }
+
+    // Append bytes that occupy exactly `width` columns using `fill` (one
+    // character of column width `fill_width`), padding any remainder with spaces
+    // so a wide character that does not divide the region evenly still lines up.
+    fn extend_fill_run(out: &mut Vec<u8>, fill: &[u8], fill_width: usize, width: usize) {
+        if fill_width == 0 {
+            return;
+        }
+        for _ in 0..width / fill_width {
+            out.extend_from_slice(fill);
+        }
+        out.resize(out.len() + width % fill_width, b' ');
     }
 
     fn ensure_logical_line(&mut self, y: CoordType) {
@@ -3293,14 +3356,15 @@ impl TextBuffer {
         self.edit_end_grouping();
     }
 
-    fn fill_block_mark(&mut self, mark: TextMark, ch: u8) {
+    fn fill_block_mark(&mut self, mark: TextMark, fill: &[u8], fill_width: usize) {
         let rect = self.block_rect(mark);
         self.edit_begin_grouping();
         for y in rect.top..rect.bottom {
             let beg = self.cursor_move_to_visual_from_line_start(y, rect.left);
             let end = self.cursor_move_to_visual_from_line_start(y, rect.right);
-            let fill = vec![ch; rect.width() as usize];
-            self.replace_logical_range(beg.logical_pos, end.logical_pos, &fill);
+            let mut run = Vec::new();
+            Self::extend_fill_run(&mut run, fill, fill_width, rect.width() as usize);
+            self.replace_logical_range(beg.logical_pos, end.logical_pos, &run);
         }
         self.edit_end_grouping();
     }
@@ -3706,7 +3770,10 @@ impl TextBuffer {
     }
 
     pub fn change_ascii_case(&mut self, uppercase: bool) {
-        let Some((beg, end)) = self.selection_range_internal(false) else {
+        let Some((beg, end)) = self
+            .selection_range_internal(false)
+            .or_else(|| self.mark.and_then(|mark| self.linear_mark_range(mark)))
+        else {
             return;
         };
         let mut text = Vec::new();
@@ -4508,6 +4575,20 @@ mod tests {
     }
 
     #[test]
+    fn ascii_case_changes_line_mark_when_there_is_no_selection() {
+        let mut buf = TextBuffer::new(false).unwrap();
+        buf.set_crlf(false);
+        buf.set_insert_final_newline(false);
+        buf.write_raw(b"one\ntwo\n");
+        buf.cursor_move_to_logical(Point { x: 1, y: 1 });
+        buf.mark(TextMarkKind::Line);
+
+        buf.change_ascii_case(true);
+
+        assert_eq!(buffer_contents(&mut buf), "one\nTWO\n");
+    }
+
+    #[test]
     fn overlay_block_from_clipboard_works_after_delete_clears_mark() {
         let mut buf = TextBuffer::new(false).unwrap();
         let mut clipboard = Clipboard::default();
@@ -4714,5 +4795,77 @@ mod tests {
         assert_eq!(buffer_contents(&mut buf), ".");
         buf.write_canon_smart("。".as_bytes());
         assert_eq!(buffer_contents(&mut buf), ".。");
+    }
+
+    #[test]
+    fn line_fill_mark_keeps_mark_on_its_line() {
+        let mut buf = TextBuffer::new(false).unwrap();
+        buf.set_crlf(false);
+        buf.set_insert_final_newline(false);
+        buf.write_raw(b"aaaa\nbbbb\ncccc");
+        buf.cursor_move_to_logical(Point { x: 2, y: 1 });
+        buf.mark(TextMarkKind::Line);
+        buf.fill_mark(b"*");
+        assert_eq!(buffer_contents(&mut buf), "aaaa\n****\ncccc");
+        let m = buf.mark.expect("mark stays after line fill");
+        // The mark must not spill onto the next line.
+        assert_eq!(m.beg.y, 1);
+        assert_eq!(m.end.y, 1);
+    }
+
+    #[test]
+    fn fill_mark_keeps_backward_char_mark_intact() {
+        use super::{TextMark, TextMarkCoordSystem};
+        let mut buf = TextBuffer::new(false).unwrap();
+        buf.set_crlf(false);
+        buf.set_insert_final_newline(false);
+        buf.write_raw(b"abcd");
+        // A backward Char mark (beg after end), as mark-selection copies a
+        // right-to-left selection; the cursor sits at the max (facing) side.
+        buf.mark = Some(TextMark {
+            kind: TextMarkKind::Char,
+            coord_system: TextMarkCoordSystem::Logical,
+            beg: Point { x: 3, y: 0 },
+            end: Point { x: 1, y: 0 },
+        });
+        buf.cursor_move_to_logical(Point { x: 3, y: 0 });
+        buf.fill_mark(b"-");
+        assert_eq!(buffer_contents(&mut buf), "a--d");
+        // The mark keeps its span; the old code collapsed it to a point.
+        let m = buf.mark.expect("mark survives");
+        assert_ne!(m.beg, m.end);
+    }
+
+    #[test]
+    fn fill_mark_supports_full_width_char() {
+        // Even columns: two full-width chars fill exactly.
+        let mut buf = TextBuffer::new(false).unwrap();
+        buf.set_crlf(false);
+        buf.set_insert_final_newline(false);
+        buf.write_raw(b"aaaa");
+        buf.cursor_move_to_logical(Point { x: 0, y: 0 });
+        buf.mark(TextMarkKind::Line);
+        buf.fill_mark("\u{9ec3}".as_bytes()); // 黃, width 2
+        assert_eq!(buffer_contents(&mut buf), "\u{9ec3}\u{9ec3}");
+
+        // Odd columns: a wide char leaves one column, padded with a space.
+        let mut buf = TextBuffer::new(false).unwrap();
+        buf.set_crlf(false);
+        buf.set_insert_final_newline(false);
+        buf.write_raw(b"aaaaa");
+        buf.cursor_move_to_logical(Point { x: 0, y: 0 });
+        buf.mark(TextMarkKind::Line);
+        buf.fill_mark("\u{9ec3}".as_bytes());
+        assert_eq!(buffer_contents(&mut buf), "\u{9ec3}\u{9ec3} ");
+
+        // ASCII fill still works unchanged.
+        let mut buf = TextBuffer::new(false).unwrap();
+        buf.set_crlf(false);
+        buf.set_insert_final_newline(false);
+        buf.write_raw(b"aaaa");
+        buf.cursor_move_to_logical(Point { x: 0, y: 0 });
+        buf.mark(TextMarkKind::Line);
+        buf.fill_mark(b"-");
+        assert_eq!(buffer_contents(&mut buf), "----");
     }
 }

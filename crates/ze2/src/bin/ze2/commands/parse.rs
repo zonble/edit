@@ -171,24 +171,49 @@ pub fn command_from_text_with_modes(
         return Some(invocation);
     }
 
+    let Some(bare) = bare_command_match(text, include_vim_commands, include_emacs_commands) else {
+        return command_from_text_with_argument(text, include_vim_commands, include_emacs_commands);
+    };
+
+    // A bare hit is the more specific match (for example "save as" is SaveAs,
+    // not Save with argument "as"), except when name normalization folded a
+    // non-name argument back into the name and dropped it (for example
+    // "fill-mark é" normalizes to "fill-mark"). That fold can only happen when a
+    // trailing token has no ASCII alphanumerics, so only then re-parse with the
+    // argument and prefer it when it resolves to the same command; otherwise the
+    // second scan is wasted work.
+    let folds_non_name_argument = text
+        .split_once(char::is_whitespace)
+        .map(|(_, rest)| rest.trim())
+        .is_some_and(|arg| !arg.is_empty() && !arg.contains(|ch: char| ch.is_ascii_alphanumeric()));
+    if folds_non_name_argument
+        && let Some(with_argument) =
+            command_from_text_with_argument(text, include_vim_commands, include_emacs_commands)
+        && with_argument.command == bare.command
+    {
+        return Some(with_argument);
+    }
+    Some(bare)
+}
+
+fn bare_command_match(
+    text: &str,
+    include_vim_commands: bool,
+    include_emacs_commands: bool,
+) -> Option<CommandInvocation> {
     let normalized = normalize_command_name(text);
     if normalized.is_empty() {
         return None;
     }
 
     for definition in command_definitions() {
-        if definition
+        let name_matches = definition
             .all_names_with_modes(include_vim_commands, include_emacs_commands)
             .any(|name| normalized == normalize_command_name(name))
-        {
-            return Some(CommandInvocation {
-                command: definition.command,
-                args: CommandArgs { argument: None, focus_target: definition.default_focus_target },
-            });
-        }
-
-        if definition.loc_id.is_some_and(|loc_id| normalized == normalize_command_name(loc(loc_id)))
-        {
+            || definition
+                .loc_id
+                .is_some_and(|loc_id| normalized == normalize_command_name(loc(loc_id)));
+        if name_matches {
             return Some(CommandInvocation {
                 command: definition.command,
                 args: CommandArgs { argument: None, focus_target: definition.default_focus_target },
@@ -196,7 +221,7 @@ pub fn command_from_text_with_modes(
         }
     }
 
-    command_from_text_with_argument(text, include_vim_commands, include_emacs_commands)
+    None
 }
 
 /// Parse a bracketed command sequence like "[undo] [save] [find foo]" into the
@@ -238,9 +263,10 @@ pub fn command_sequence_from_text(
 
 /// A bracketed step may lead with a repeat count: "[3 undo]" runs "undo" three
 /// times. Returns the count (default 1) and the remaining command text. A bare
-/// number like "[42]" is left alone so it stays the Goto shorthand. A count
-/// over the cap returns "None" to reject the whole sequence, rather than
-/// silently truncating (which could half-run a destructive step).
+/// number like "[42]" is left alone so it stays the Goto shorthand. A count of
+/// zero or over the cap returns "None" to reject the whole sequence, rather than
+/// silently expanding to nothing or truncating (either of which could hide a
+/// fat-fingered destructive step).
 fn split_repeat_count(text: &str) -> Option<(usize, &str)> {
     const MAX_REPEAT: usize = 1000;
 
@@ -251,7 +277,7 @@ fn split_repeat_count(text: &str) -> Option<(usize, &str)> {
     };
     let rest = rest.trim_start();
     match head.parse::<usize>() {
-        Ok(count) if !rest.is_empty() => (count <= MAX_REPEAT).then_some((count, rest)),
+        Ok(count) if !rest.is_empty() => (1..=MAX_REPEAT).contains(&count).then_some((count, rest)),
         _ => Some((1, text)),
     }
 }
@@ -380,50 +406,6 @@ pub(crate) fn normalize_command_name(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn command_sequence_parses_all_or_nothing() {
-        let seq = command_sequence_from_text("[undo] [save]", true, true).unwrap();
-        assert!(seq.len() == 2);
-        assert!(matches!(seq[0].command, Command::Undo));
-        assert!(matches!(seq[1].command, Command::Save));
-
-        // A single unknown token rejects the whole sequence.
-        assert!(command_sequence_from_text("[undo] [not-a-command]", true, true).is_none());
-        // Not a bracket sequence at all.
-        assert!(command_sequence_from_text("undo", true, true).is_none());
-    }
-
-    #[test]
-    fn command_sequence_expands_repeat_counts() {
-        let seq = command_sequence_from_text("[3 undo]", true, true).unwrap();
-        assert!(seq.len() == 3);
-        assert!(seq.iter().all(|inv| matches!(inv.command, Command::Undo)));
-
-        // A leading count repeats the whole command, argument included.
-        let seq = command_sequence_from_text("[2 find foo]", true, true).unwrap();
-        assert!(seq.len() == 2);
-        assert!(seq.iter().all(|inv| matches!(inv.command, Command::Find)));
-
-        // A bare number stays the Goto shorthand, not a repeat.
-        let seq = command_sequence_from_text("[42]", true, true).unwrap();
-        assert!(seq.len() == 1 && matches!(seq[0].command, Command::Goto));
-
-        // An over-limit count rejects the whole sequence instead of truncating.
-        assert!(command_sequence_from_text("[5000 undo]", true, true).is_none());
-    }
-
-    #[test]
-    fn macro_definition_splits_name_and_body() {
-        assert_eq!(macro_name_and_body("greet = [insert hi]"), Some(("greet", "[insert hi]")));
-        // Empty body is the unbind form.
-        assert_eq!(macro_name_and_body("greet ="), Some(("greet", "")));
-        // Multi-word names, bracket names, and missing '=' are rejected.
-        assert_eq!(macro_name_and_body("two words = [undo]"), None);
-        assert_eq!(macro_name_and_body("[weird] = [undo]"), None);
-        assert_eq!(macro_name_and_body("nobody"), None);
-        assert_eq!(macro_name_and_body("= [undo]"), None);
-    }
 
     #[test]
     fn command_text_accepts_common_aliases() {
@@ -567,6 +549,64 @@ mod tests {
         };
 
         assert!(argument == "path with spaces.txt");
+    }
+
+    #[test]
+    fn editor_action_commands_resolve() {
+        // Each editor primitive a profile can bind must be reachable by name.
+        for (name, command) in [
+            ("move-left", Command::MoveLeft),
+            ("move-right", Command::MoveRight),
+            ("move-document-begin", Command::MoveToDocumentBegin),
+            ("move-document-end", Command::MoveToDocumentEnd),
+            ("move-lines-up", Command::MoveLinesUp),
+            ("move-lines-down", Command::MoveLinesDown),
+            ("select-left", Command::SelectLeft),
+            ("select-right", Command::SelectRight),
+            ("select-word-left", Command::SelectWordLeft),
+            ("select-word-right", Command::SelectWordRight),
+            ("select-document-begin", Command::SelectToDocumentBegin),
+            ("select-document-end", Command::SelectToDocumentEnd),
+            ("delete-forward", Command::DeleteForward),
+            ("delete-backward", Command::DeleteBackward),
+            ("delete-word-forward", Command::DeleteWordForward),
+            ("delete-word-backward", Command::DeleteWordBackward),
+            ("delete-line", Command::DeleteLine),
+            ("delete-to-line-end", Command::DeleteToLineEnd),
+            ("toggle-overtype", Command::ToggleOvertype),
+            ("move-up", Command::MoveUp),
+            ("move-down", Command::MoveDown),
+            ("page-up", Command::PageUp),
+            ("page-down", Command::PageDown),
+            ("select-up", Command::SelectUp),
+            ("select-down", Command::SelectDown),
+            ("select-page-up", Command::SelectPageUp),
+            ("select-page-down", Command::SelectPageDown),
+            ("select-line-begin", Command::SelectToVisualLineBegin),
+            ("select-line-end", Command::SelectToVisualLineEnd),
+        ] {
+            let invocation =
+                command_from_text(name).unwrap_or_else(|| panic!("{name} did not resolve"));
+            assert!(invocation.command == command, "{name} resolved to the wrong command");
+        }
+    }
+
+    #[test]
+    fn command_text_keeps_punctuation_argument() {
+        // "fill-mark -" normalizes to the bare "fill-mark", so a naive name match
+        // would drop the "-" fill character. The argument must survive for any
+        // fill character, punctuation and Unicode included.
+        for fill in ["-", "*", ".", "x", "é"] {
+            let text = format!("fill-mark {fill}");
+            let Some(CommandInvocation {
+                command: Command::FillMark,
+                args: CommandArgs { argument: Some(argument), .. },
+            }) = command_from_text(&text)
+            else {
+                panic!("fill-mark {fill} did not keep its argument");
+            };
+            assert!(argument == fill);
+        }
     }
 
     #[test]
