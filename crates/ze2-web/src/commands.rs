@@ -38,7 +38,7 @@ pub use definition::{
     Command, CommandArgs, CommandBarShortcut, CommandFocusTarget, CommandInvocation,
 };
 #[allow(unused_imports)]
-pub(crate) use macro_commands::source_profile_file;
+pub(crate) use macro_commands::{load_default_profile, source_profile_file};
 pub use parse::{
     autocomplete_command_suggestions_with_modes, command_from_text_with_modes,
     command_sequence_from_text,
@@ -78,34 +78,25 @@ pub fn execute_command(ctx: &mut Context, state: &mut State, command: Command) {
     );
 }
 
-// Cap the record buffer so an unattended "record on" cannot grow without bound.
-const MAX_RECORDED: usize = 4096;
-
 pub fn execute_command_invocation(
     ctx: &mut Context,
     state: &mut State,
     invocation: CommandInvocation,
 ) {
-    // Record top-level invocations while recording. Never record a replay (the
-    // replaying guard) or the record/replay controls themselves, and skip steps
-    // inside a macro (depth > 0) since replaying the macro call re-runs them.
-    // Paste is excluded on the web because it completes asynchronously (see
-    // below), so a replayed Paste would race later steps.
-    if state.recording
-        && !state.replaying
-        && state.macro_depth == 0
-        && state.recorded.len() < MAX_RECORDED
-        && !matches!(invocation.command, Command::RecordToggle | Command::Replay | Command::Paste)
-    {
+    // Record top-level invocations while recording. Exclude Paste on the web: it
+    // completes asynchronously (see below), so a replayed Paste would race later
+    // steps (see macro_commands::should_record).
+    if macro_commands::should_record(state, invocation.command, true) {
         state.recorded.push(invocation.clone());
     }
 
-    if matches!(invocation.command, Command::Exit | Command::CloseFileAndExitIfLast) {
-        if state.documents.len() <= 1 {
-            state.command_bar_error = loc(LocId::WebCannotExitLastDocument).to_string();
-            ctx.needs_rerender();
-            return;
-        }
+    if matches!(invocation.command, Command::Exit | Command::CloseFileAndExitIfLast)
+        && state.documents.len() <= 1
+    {
+        state.command_bar_error = loc(LocId::WebCannotExitLastDocument).to_string();
+        state.command_bar_error_is_warning = false;
+        ctx.needs_rerender();
+        return;
     }
 
     if invocation.command == Command::Paste {
@@ -131,8 +122,12 @@ pub fn execute_command_sequence(
     sequence: Vec<CommandInvocation>,
 ) {
     for invocation in sequence {
+        // Paste completes through an async host round-trip (see
+        // execute_command_invocation), so any later step would run against the
+        // pre-paste buffer. Stop the sequence here rather than edit stale text.
+        let issued_async_paste = invocation.command == Command::Paste;
         execute_command_invocation(ctx, state, invocation);
-        if state.macro_abort {
+        if state.macro_abort || issued_async_paste {
             break;
         }
     }
