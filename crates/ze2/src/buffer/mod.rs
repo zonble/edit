@@ -2360,8 +2360,8 @@ impl TextBuffer {
                     TextMarkKind::Block => {
                         let rect = self.block_rect(mark);
                         if visual_line < self.stats.visual_lines
-                            && rect.top <= cursor_beg.logical_pos.y
-                            && cursor_beg.logical_pos.y < rect.bottom
+                            && rect.top <= visual_line
+                            && visual_line < rect.bottom
                         {
                             let mut cursor = cursor_beg;
                             // Block marks are visual, so compare against visual positions here.
@@ -2370,7 +2370,7 @@ impl TextBuffer {
                             {
                                 cursor = self.cursor_move_to_visual_internal(
                                     cursor,
-                                    Point { x: rect.left, y: cursor_beg.logical_pos.y },
+                                    Point { x: rect.left, y: visual_line },
                                 );
                                 cursor.visual_pos.x
                             } else {
@@ -2381,7 +2381,7 @@ impl TextBuffer {
                             {
                                 cursor = self.cursor_move_to_visual_internal(
                                     cursor,
-                                    Point { x: rect.right, y: cursor_beg.logical_pos.y },
+                                    Point { x: rect.right, y: visual_line },
                                 );
                                 cursor.visual_pos.x
                             } else {
@@ -2396,7 +2396,9 @@ impl TextBuffer {
                             let screen_rect = Rect {
                                 left: screen_left.max(destination.left + self.margin_width),
                                 top: screen_top,
-                                right: screen_right.min(destination.right),
+                                right: screen_right
+                                    .max(screen_left + 1)
+                                    .min(destination.right),
                                 bottom: screen_top + 1,
                             };
 
