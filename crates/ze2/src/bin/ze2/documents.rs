@@ -495,6 +495,13 @@ mod tests {
     }
 
     #[test]
+    fn built_in_file_associations_include_profiles() {
+        let lang = process_file_associations(FILE_ASSOCIATIONS, Path::new("assets/ze2.pro"));
+
+        assert_eq!(lang.map(|lang| lang.id), Some("properties"));
+    }
+
+    #[test]
     fn recovery_dir_creation_reuses_private_dir() {
         let dir = std::env::temp_dir().join(format!("ze2-test-recovery-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
