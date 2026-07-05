@@ -82,6 +82,12 @@ fn run() -> apperr::Result<()> {
     }
 
     let mut state = State::new()?;
+
+    // Load settings so user file associations are ready when opening files passed as args
+    if let Err(err) = Settings::reload() {
+        state.add_error(err);
+    }
+
     if handle_args(&mut state)? {
         return Ok(());
     }
