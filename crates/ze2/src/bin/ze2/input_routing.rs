@@ -6,7 +6,7 @@ use ze2::tui::Context;
 
 use crate::commands::{
     Command, CommandInvocation, command_invocation_from_shortcut, commandbar_shortcut_from_key,
-    should_handle_command_shortcut_before_editor,
+    execute_command_sequence, should_handle_command_shortcut_before_editor,
 };
 use crate::settings::BindingMode;
 use crate::state::{State, StateSearchKind};
@@ -21,6 +21,42 @@ pub fn handle_input_before_editor(
     }
 
     insert_text_invocation_before_editor(ctx, state)
+}
+
+// Run a user binding before anything else in the frame (called at the top of
+// draw, before the menubar), so it can override any key: text-area editing keys,
+// the menu accelerators (Alt+letter), and the default profile alike.
+pub(crate) fn run_user_binding_before_editor(ctx: &mut Context, state: &mut State) -> bool {
+    // Only in the editor: never intercept keys meant for an open menu, the
+    // command bar, the search field, a dialog, or a pending clipboard sync. (A
+    // binding still overrides a menu accelerator while the menu is closed, since
+    // this runs before the menubar claims the key.)
+    if state.menubar_visible
+        || state.command_bar_active
+        || !matches!(state.wants_search.kind, StateSearchKind::Hidden | StateSearchKind::Disabled)
+        || state.wants_dialog()
+        || ctx.clipboard_ref().wants_host_sync()
+    {
+        return false;
+    }
+
+    let Some(key) = ctx.keyboard_input() else {
+        return false;
+    };
+    let Some(sequence) = user_binding_for_key(state, key) else {
+        return false;
+    };
+
+    state.macro_abort = false;
+    execute_command_sequence(ctx, state, sequence);
+    true
+}
+
+fn user_binding_for_key(
+    state: &State,
+    key: ze2::input::InputKey,
+) -> Option<Vec<CommandInvocation>> {
+    state.user_bindings.get(&key).cloned()
 }
 
 fn handle_commandbar_shortcut(ctx: &Context, state: &mut State) -> bool {
@@ -106,5 +142,32 @@ fn insert_text_invocation_before_editor(
         Some(invocation)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ze2::input::{kbmod, vk};
+
+    use super::*;
+
+    #[test]
+    fn binding_before_editor_uses_user_profile_only() {
+        let key = kbmod::ALT | vk::B;
+        let mut state = State::new().unwrap();
+        state.key_bindings.insert(
+            key,
+            vec![CommandInvocation { command: Command::MarkBlock, args: Default::default() }],
+        );
+
+        assert!(user_binding_for_key(&state, key).is_none());
+
+        state.user_bindings.insert(
+            key,
+            vec![CommandInvocation { command: Command::MoveMark, args: Default::default() }],
+        );
+
+        let sequence = user_binding_for_key(&state, key).unwrap();
+        assert!(sequence[0].command == Command::MoveMark);
     }
 }

@@ -334,6 +334,24 @@ impl Default for ButtonStyle {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use crate::input::{Input, kbmod, vk};
+
+    use super::*;
+
+    #[test]
+    fn matches_shortcut_ignores_consumed_input() {
+        let mut tui = Tui::new().unwrap();
+        let shortcut = kbmod::ALT | vk::F;
+
+        let mut ctx = tui.create_context(Some(Input::Keyboard(shortcut)));
+        assert!(ctx.matches_shortcut(shortcut));
+        assert!(ctx.consume_shortcut(shortcut));
+        assert!(!ctx.matches_shortcut(shortcut));
+    }
+}
+
 /// There's two types of lifetimes the TUI code needs to manage:
 /// * Across frames
 /// * Per frame
@@ -1993,6 +2011,10 @@ impl<'a> Context<'a, '_> {
 
     /// Checks if the current input matches the given shortcut.
     pub fn matches_shortcut(&self, shortcut: InputKey) -> bool {
+        if self.input_consumed {
+            return false;
+        }
+
         if self.input_keyboard == Some(shortcut) {
             return true;
         }
@@ -3044,22 +3066,7 @@ impl<'a> Context<'a, '_> {
                     kbmod::CTRL => tb.select_all(),
                     _ => return false,
                 },
-                vk::B => match modifiers {
-                    kbmod::ALT if cfg!(any(target_os = "macos", target_os = "ios")) => {
-                        // On macOS, terminals commonly emit the Emacs style
-                        // Alt+B (ESC b) sequence for Alt+Left.
-                        tb.cursor_move_delta(CursorMovement::Word, -1);
-                    }
-                    _ => return false,
-                },
-                vk::F => match modifiers {
-                    kbmod::ALT if cfg!(any(target_os = "macos", target_os = "ios")) => {
-                        // On macOS, terminals commonly emit the Emacs style
-                        // Alt+F (ESC f) sequence for Alt+Right.
-                        tb.cursor_move_delta(CursorMovement::Word, 1);
-                    }
-                    _ => return false,
-                },
+                vk::B | vk::F => return false,
                 vk::J => match modifiers {
                     kbmod::ALT => tb.join_next_line(),
                     _ => return false,

@@ -7,8 +7,8 @@ use ze2::input::vk;
 use ze2::tui::*;
 
 use crate::commands::{
-    autocomplete_command_suggestions_with_modes, command_from_text_with_modes,
-    execute_command_invocation,
+    Command, CommandArgs, CommandInvocation, autocomplete_command_suggestions_with_modes,
+    command_from_text_with_modes, command_sequence_from_text, execute_command_sequence,
 };
 use crate::localization::{LocId, loc};
 use crate::state::*;
@@ -173,8 +173,13 @@ pub fn draw_commandbar(ctx: &mut Context, state: &mut State) {
                 offset_y: 0.0,
             });
             ctx.attr_border();
-            ctx.attr_background_rgba(ctx.indexed(IndexedColor::Red));
-            ctx.attr_foreground_rgba(ctx.indexed(IndexedColor::BrightWhite));
+            let (bg, fg) = if state.command_bar_error_is_warning {
+                (IndexedColor::Yellow, IndexedColor::Black)
+            } else {
+                (IndexedColor::Red, IndexedColor::BrightWhite)
+            };
+            ctx.attr_background_rgba(ctx.indexed(bg));
+            ctx.attr_foreground_rgba(ctx.indexed(fg));
             ctx.attr_padding(Rect::two(0, 1));
             {
                 ctx.label("error", &state.command_bar_error);
@@ -235,60 +240,47 @@ fn commandbar_autocomplete_context(input: &str) -> CommandbarAutocompleteContext
 }
 
 fn submit_commandbar_input(ctx: &mut Context, state: &mut State) {
-    let input = state.command_bar_input.trim();
+    // Own the input up front: every branch below mutates "state", which a borrow
+    // of "command_bar_input" would forbid.
+    let input = state.command_bar_input.trim().to_string();
+    let include_vim = state.command_bar_include_vim_commands;
+    let include_emacs = state.command_bar_include_emacs_commands;
 
-    if let Some(invocations) = command_macro_from_text(
-        input,
-        state.command_bar_include_vim_commands,
-        state.command_bar_include_emacs_commands,
-    ) {
-        state.command_bar_input.clear();
-        state.command_bar_error.clear();
-        state.command_bar_active = false;
-        state.wants_editor_focus = true;
-        for invocation in invocations {
-            execute_command_invocation(ctx, state, invocation);
+    let invocations =
+        if let Some(sequence) = command_sequence_from_text(&input, include_vim, include_emacs) {
+            Some(sequence)
+        } else if let Some(invocation) =
+            command_from_text_with_modes(&input, include_vim, include_emacs)
+        {
+            Some(vec![invocation])
+        } else if state.macros.contains_key(&input) {
+            // A bare name that is not a built-in but is a saved macro runs that macro.
+            // Built-ins win any collision because they are matched first.
+            Some(vec![CommandInvocation {
+                command: Command::RunMacro,
+                args: CommandArgs { argument: Some(input.clone()), ..Default::default() },
+            }])
+        } else {
+            None
+        };
+
+    let Some(invocations) = invocations else {
+        if !input.is_empty() {
+            state.command_bar_input.clear();
+            state.command_bar_error = loc(LocId::CommandBarUnknownCommand).to_string();
+            state.command_bar_error_is_warning = false;
+            ctx.needs_rerender();
         }
-    } else if let Some(invocation) = command_from_text_with_modes(
-        input,
-        state.command_bar_include_vim_commands,
-        state.command_bar_include_emacs_commands,
-    ) {
-        state.command_bar_input.clear();
-        state.command_bar_error.clear();
-        state.command_bar_active = false;
-        state.wants_editor_focus = true;
-        execute_command_invocation(ctx, state, invocation);
-    } else if !input.is_empty() {
-        state.command_bar_input.clear();
-        state.command_bar_error = loc(LocId::CommandBarUnknownCommand).to_string();
-        ctx.needs_rerender();
-    }
-}
+        return;
+    };
 
-fn command_macro_from_text(
-    input: &str,
-    include_vim_commands: bool,
-    include_emacs_commands: bool,
-) -> Option<Vec<crate::commands::CommandInvocation>> {
-    let mut rest = input.trim();
-    if !rest.starts_with('[') {
-        return None;
-    }
-
-    let mut invocations = Vec::new();
-    while !rest.is_empty() {
-        rest = rest.strip_prefix('[')?;
-        let (command, tail) = rest.split_once(']')?;
-        invocations.push(command_from_text_with_modes(
-            command.trim(),
-            include_vim_commands,
-            include_emacs_commands,
-        )?);
-        rest = tail.trim_start();
-    }
-
-    Some(invocations)
+    state.command_bar_input.clear();
+    state.command_bar_error.clear();
+    state.command_bar_active = false;
+    state.wants_editor_focus = true;
+    // Fresh top-level run: clear any abort left by a previous macro.
+    state.macro_abort = false;
+    execute_command_sequence(ctx, state, invocations);
 }
 
 #[cfg(test)]

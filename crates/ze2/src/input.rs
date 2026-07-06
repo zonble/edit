@@ -18,7 +18,7 @@ use crate::vt;
 /// Of course you could just translate on the ABI boundary, but my hope is that this
 /// design lets me realize some restrictions early on that I can't foresee yet.
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InputKey(u32);
 
 impl InputKey {
@@ -26,7 +26,9 @@ impl InputKey {
         Self(v)
     }
 
-    pub(crate) const fn from_ascii(ch: char) -> Option<Self> {
+    /// Map a single ASCII character to its key, e.g. for parsing key names.
+    /// Letters fold to their unshifted key; uppercase input adds Shift.
+    pub const fn from_ascii(ch: char) -> Option<Self> {
         if ch == ' ' || (ch >= '0' && ch <= '9') {
             Some(Self(ch as u32))
         } else if ch >= 'a' && ch <= 'z' {
@@ -50,7 +52,7 @@ impl InputKey {
         InputKeyMod(self.0 & 0xFF000000)
     }
 
-    pub(crate) const fn modifiers_contains(&self, modifier: InputKeyMod) -> bool {
+    pub const fn modifiers_contains(&self, modifier: InputKeyMod) -> bool {
         (self.0 & modifier.0) != 0
     }
 

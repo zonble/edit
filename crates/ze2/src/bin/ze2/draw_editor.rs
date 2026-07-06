@@ -28,6 +28,10 @@ pub fn draw_editor(ctx: &mut Context, state: &mut State) {
     };
     let height_reduction = search_height + 2; // +1 for the status bar, +1 for the command bar
 
+    // Remember the editor's visible height so the page-up/down commands can page
+    // by a screenful, the way the text area does from its rendered height.
+    state.editor_viewport_height = (size.height - height_reduction).max(1);
+
     if let Some(doc) = state.documents.active() {
         let tb = doc.buffer.borrow();
         let word_wrap_column = tb.word_wrap_max_column();
@@ -467,6 +471,41 @@ pub fn draw_goto_menu(ctx: &mut Context, state: &mut State) {
         state.wants_goto = false;
         state.goto_target.clear();
         state.goto_invalid = false;
+        ctx.needs_rerender();
+    }
+}
+
+pub fn draw_fill_mark_menu(ctx: &mut Context, state: &mut State) {
+    let mut done = false;
+
+    if let Some(doc) = state.documents.active_mut() {
+        ctx.modal_begin("fill-mark", loc(LocId::FillMarkPrompt));
+        {
+            ctx.editline("fill-mark-char", &mut state.fill_mark_input);
+            // fill_mark uses only the first character, so keep the field to one
+            // rather than letting the rest be typed and silently dropped.
+            if let Some((next, _)) = state.fill_mark_input.char_indices().nth(1) {
+                state.fill_mark_input.truncate(next);
+            }
+            ctx.attr_intrinsic_size(Size { width: 24, height: 1 });
+            ctx.steal_focus();
+
+            if ctx.consume_shortcut(vk::RETURN) {
+                // fill_mark uses the first character of the input (a full-width
+                // char works too), so an empty entry simply fills nothing.
+                doc.buffer.borrow_mut().fill_mark(state.fill_mark_input.as_bytes());
+                done = true;
+                ctx.needs_rerender();
+            }
+        }
+        done |= ctx.modal_end();
+    } else {
+        done = true;
+    }
+
+    if done {
+        state.wants_fill_mark = false;
+        state.fill_mark_input.clear();
         ctx.needs_rerender();
     }
 }

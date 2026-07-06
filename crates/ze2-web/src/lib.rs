@@ -156,8 +156,8 @@ impl Engine {
         let vt_iter = self.vt_parser.parse(input);
         let mut events = Vec::new();
         {
-            let mut input_iter = self.input_parser.parse(vt_iter);
-            while let Some(event) = input_iter.next() {
+            let input_iter = self.input_parser.parse(vt_iter);
+            for event in input_iter {
                 events.push(owned_input(event));
             }
         }
@@ -327,6 +327,25 @@ fn borrow_input(input: &OwnedInput) -> Input<'_> {
 }
 
 fn draw(ctx: &mut Context, state: &mut State) {
+    // Load the compiled-in default profile on the first frame, now that a
+    // Context exists. The web build has no profile file to override it.
+    if !state.profile_loaded {
+        state.profile_loaded = true;
+        load_default_profile(ctx, state);
+    }
+
+    if ctx.keyboard_input().is_some() {
+        state.command_bar_error.clear();
+        if !state.command_bar_focus {
+            state.command_bar_active = false;
+        }
+    }
+
+    // User bindings run before the menubar and editor, matching native.
+    if run_user_binding_before_editor(ctx, state) {
+        ctx.set_input_consumed();
+    }
+
     draw_menubar(ctx, state, false);
     context_set_eof_marker_for_style(ctx, state.eof_style);
 
@@ -354,6 +373,9 @@ fn draw(ctx: &mut Context, state: &mut State) {
     }
     if state.wants_goto {
         draw_goto_menu(ctx, state);
+    }
+    if state.wants_fill_mark {
+        draw_fill_mark_menu(ctx, state);
     }
     if state.wants_selection_context_menu {
         draw_selection_context_menu(ctx, state);
@@ -386,9 +408,16 @@ fn draw(ctx: &mut Context, state: &mut State) {
     }
 
     if let Some(key) = ctx.keyboard_input() {
-        if let Some(invocation) = command_invocation_from_shortcut(key) {
+        // Profile key bindings are the source of truth for app shortcuts;
+        // command_invocation_from_shortcut only still covers the CJK insert keys.
+        // These fire regardless of which widget holds focus, matching the main
+        // branch's global shortcuts.
+        if let Some(sequence) = state.key_bindings.get(&key).cloned() {
+            state.macro_abort = false;
+            execute_command_sequence(ctx, state, sequence);
+        } else if let Some(invocation) = command_invocation_from_shortcut(key) {
             execute_command_invocation(ctx, state, invocation);
-        } else if key == ze2::input::vk::F3 {
+        } else if key == vk::F3 {
             search_execute(ctx, state, SearchAction::Search);
         } else {
             return;
@@ -472,6 +501,10 @@ pub extern "C" fn ze2_web_redraw() {
     with_engine((), |engine| engine.redraw_full());
 }
 
+/// # Safety
+///
+/// `ptr` must be null or point to `len` initialized bytes that stay valid for
+/// the duration of the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ze2_web_input(ptr: *const u8, len: usize) {
     if ptr.is_null() {
@@ -487,6 +520,10 @@ pub extern "C" fn ze2_web_flush_input() {
     with_engine((), |engine| engine.input(""));
 }
 
+/// # Safety
+///
+/// `ptr` must be null or point to `len` initialized bytes that stay valid for
+/// the duration of the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ze2_web_paste(ptr: *const u8, len: usize) {
     if ptr.is_null() {
@@ -501,6 +538,10 @@ pub extern "C" fn ze2_web_take_host_action() -> i32 {
     with_engine(HostAction::None as i32, |engine| engine.take_host_action() as i32)
 }
 
+/// # Safety
+///
+/// `ptr` must be null or point to `len` initialized bytes that stay valid for
+/// the duration of the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ze2_web_set_document(ptr: *const u8, len: usize) {
     if ptr.is_null() {
@@ -511,6 +552,11 @@ pub unsafe extern "C" fn ze2_web_set_document(ptr: *const u8, len: usize) {
     with_engine((), |engine| engine.replace_document(&text, None));
 }
 
+/// # Safety
+///
+/// `text_ptr` must be null or point to `text_len` initialized bytes, and
+/// `name_ptr` must be null or point to `name_len` initialized bytes; both must
+/// stay valid for the duration of the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ze2_web_replace_document_with_name(
     text_ptr: *const u8,
@@ -529,6 +575,11 @@ pub unsafe extern "C" fn ze2_web_replace_document_with_name(
     with_engine((), |engine| engine.replace_document(&text, Some(&name)));
 }
 
+/// # Safety
+///
+/// `text_ptr` must be null or point to `text_len` initialized bytes, and
+/// `name_ptr` must be null or point to `name_len` initialized bytes; both must
+/// stay valid for the duration of the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ze2_web_set_document_with_name(
     text_ptr: *const u8,
@@ -541,6 +592,11 @@ pub unsafe extern "C" fn ze2_web_set_document_with_name(
     }
 }
 
+/// # Safety
+///
+/// `text_ptr` must be null or point to `text_len` initialized bytes, and
+/// `name_ptr` must be null or point to `name_len` initialized bytes; both must
+/// stay valid for the duration of the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ze2_web_add_document_with_name(
     text_ptr: *const u8,
@@ -678,6 +734,10 @@ pub extern "C" fn ze2_web_alloc(size: usize) -> *mut u8 {
     unsafe { alloc(layout) }
 }
 
+/// # Safety
+///
+/// `ptr` must have been returned by `ze2_web_alloc` with the same `size`, and
+/// must not be used after this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ze2_web_dealloc(ptr: *mut u8, size: usize) {
     if let Some(ptr) = NonNull::new(ptr)
